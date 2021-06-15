@@ -46,9 +46,8 @@ class X86Access(AppAccess[HeaderTy]):
             path: str,
             filename: str,
             deps: List[str] = [],
-            fileformat: HeaderTy = ELFHeader,
-            arch: str = "x86") -> None:
-        AppAccess.__init__(self, path, filename, deps, fileformat, arch)
+            fileformat: HeaderTy = ELFHeader) -> None:
+        AppAccess.__init__(self, path, filename, deps, fileformat)
         self._x86d: Optional[X86Dictionary] = None
         self._functions: Dict[str, X86Function] = {}
 

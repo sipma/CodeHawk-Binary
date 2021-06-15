@@ -113,11 +113,11 @@ def get_app(path: str, xfile: str, xinfo: XI.XInfo) -> AppAccess:
     arch = xinfo.architecture
     format = xinfo.format
     if arch == "x86":
-        return X86Access(path, xfile, fileformat=format, arch=arch)
+        return X86Access(path, xfile, fileformat=format)
     elif arch == "mips":
-        return MIPSAccess(path, xfile, fileformat=format, arch=arch)
+        return MIPSAccess(path, xfile, fileformat=format)
     elif arch == "arm":
-        return ARMAccess(path, xfile, fileformat=format, arch=arch)
+        return ARMAccess(path, xfile, fileformat=format)
     else:
         raise UF.CHBError("Archicture " + arch + " not yet supported")
 
