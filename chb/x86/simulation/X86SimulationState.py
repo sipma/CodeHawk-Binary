@@ -128,8 +128,7 @@ class X86SimulationState(SimulationState):
         elif SU.is_half_reg(reg):
             fullreg = SU.fullregmap[reg]
             fullregval = self.get_regval(iaddr, fullreg)
-            if fullregval.is_literal:
-                fullregval = cast(SV.SimDoubleWordValue, fullregval)
+            if isinstance(fullregval, SV.SimDoubleWordValue):
                 newval = fullregval.set_low_word(srcval)
                 self.set_register(iaddr, fullreg, newval)
             else:
@@ -137,17 +136,13 @@ class X86SimulationState(SimulationState):
         elif SU.is_qlow_reg(reg):
             fullreg = SU.fullregmap[reg]
             fullregval = self.get_regval(iaddr, fullreg)
-            if fullregval.is_literal:
-                fullregval = cast(SV.SimDoubleWordValue, fullregval)
+            if isinstance(fullregval, SV.SimDoubleWordValue):
                 if srcval.is_literal:
-                    if srcval.is_doubleword:
-                        srcval = cast(SV.SimDoubleWordValue, srcval)
+                    if isinstance(srcval, SV.SimDoubleWordValue):
                         newval = fullregval.set_byte1(srcval.simbyte1)
-                    elif srcval.is_word:
-                        srcval = cast(SV.SimWordValue, srcval)
+                    elif isinstance(srcval, SV.SimWordValue):
                         newval = fullregval.set_byte1(srcval.lowbyte)
-                    elif srcval.is_byte:
-                        srcval = cast(SV.SimByteValue, srcval)
+                    elif isinstance(srcval, SV.SimByteValue):
                         newval = fullregval.set_byte1(srcval)
                     else:
                         raise SU.CHBSimError(
@@ -160,17 +155,13 @@ class X86SimulationState(SimulationState):
         elif SU.is_qhigh_reg(reg):
             fullreg = SU.fullregmap[reg]
             fullregval = self.get_regval(iaddr, fullreg)
-            if fullregval.is_literal:
-                fullregval = cast(SV.SimDoubleWordValue, fullregval)
+            if isinstance(fullregval, SV.SimDoubleWordValue):
                 if srcval.is_literal:
-                    if srcval.is_doubleword:
-                        srcval = cast(SV.SimDoubleWordValue, srcval)
+                    if isinstance(srcval, SV.SimDoubleWordValue):
                         newval = fullregval.set_byte2(srcval.simbyte1)
-                    elif srcval.is_word:
-                        srcval = cast(SV.SimWordValue, srcval)
+                    elif isinstance(srcval, SV.SimWordValue):
                         newval = fullregval.set_byte2(srcval.lowbyte)
-                    elif srcval.is_byte:
-                        srcval = cast(SV.SimByteValue, srcval)
+                    elif isinstance(srcval, SV.SimByteValue):
                         newval = fullregval.set_byte2(srcval)
                     else:
                         raise SU.CHBSimError(
@@ -187,20 +178,15 @@ class X86SimulationState(SimulationState):
         if not srcval.is_defined:
             self.add_logmsg(iaddr, 'Source value is undefined: ' + str(dstop))
         lhs = self.get_lhs(iaddr, dstop)
-        if lhs.is_register:
-            lhs = cast(SimRegister, lhs)
+        if isinstance(lhs, SimRegister):
             self.set_register(iaddr, lhs.register, srcval)
 
-        elif (lhs.is_double_register
-              and srcval.is_literal
-              and srcval.is_quadword):
-            srcval = cast(SV.SimQuadWordValue, srcval)
-            lhs = cast(SimDoubleRegister, lhs)
+        elif (isinstance(lhs, SimDoubleRegister)
+              and isinstance(srcval, SV.SimQuadWordValue)):
             self.set_register(iaddr, lhs.lowregister, srcval.lowhalf)
             self.set_register(iaddr, lhs.highregister, srcval.highhalf)
 
-        elif lhs.is_memory_location:
-            lhs = cast(SimMemoryLocation, lhs)
+        elif isinstance(lhs, SimMemoryLocation):
             if lhs.is_global:
                 self.globalmem.set(iaddr, lhs.simaddress, srcval)
                 self.add_logmsg(iaddr, str(lhs) + ' := ' + str(srcval))
