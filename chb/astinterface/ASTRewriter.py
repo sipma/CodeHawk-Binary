@@ -70,8 +70,20 @@ class ASTRewriter(ASTTransformer):
         if stmt.is_ast_return:
             return self.transform_return_stmt(cast(AST.ASTReturn, stmt))
 
+        elif stmt.is_ast_break or stmt.is_ast_continue:
+            return self.transform_break_or_continue_stmt(cast(AST.ASTBreakOrContinue, stmt))
+
+        elif stmt.is_ast_goto:
+            return self.transform_goto_stmt(cast(AST.ASTGoto, stmt))
+
+        elif stmt.is_ast_label:
+            return self.transform_label_stmt(cast(AST.ASTLabel, stmt))
+
         elif stmt.is_ast_block:
             return self.transform_block_stmt(cast(AST.ASTBlock, stmt))
+
+        elif stmt.is_ast_loop:
+            return self.transform_loop_stmt(cast(AST.ASTLoop, stmt))
 
         elif stmt.is_ast_instruction_sequence:
             return self.transform_instruction_sequence_stmt(
@@ -90,10 +102,27 @@ class ASTRewriter(ASTTransformer):
         else:
             return stmt
 
+    def transform_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> AST.ASTStmt:
+        self.set_currentid(stmt.assembly_xref)
+        return stmt
+
+    def transform_goto_stmt(self, stmt: AST.ASTGoto) -> AST.ASTStmt:
+        self.set_currentid(stmt.assembly_xref)
+        return stmt
+
+    def transform_label_stmt(self, stmt: AST.ASTLabel) -> AST.ASTStmt:
+        self.set_currentid(stmt.assembly_xref)
+        return stmt
+
     def transform_block_stmt(self, stmt: AST.ASTBlock) -> AST.ASTStmt:
         self.set_currentid(stmt.assembly_xref)
         return AST.ASTBlock(
             stmt.assembly_xref, [s.transform(self) for s in stmt.stmts])
+
+    def transform_loop_stmt(self, stmt: AST.ASTLoop) -> AST.ASTStmt:
+        self.set_currentid(stmt.assembly_xref)
+        return AST.ASTLoop(
+            stmt.assembly_xref, stmt.stmts[0].transform(self))
 
     def transform_instruction_sequence_stmt(
             self, stmt: AST.ASTInstrSequence) -> AST.ASTStmt:

@@ -159,6 +159,37 @@ class AbstractSyntaxTree:
             self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
         return AST.ASTBlock(assembly_xref, stmts)
 
+    def mk_loop(
+            self,
+            body: AST.ASTStmt,
+            opt_assembly_xref: Optional[int] = None) -> AST.ASTLoop:
+        assembly_xref = (
+            self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
+        return AST.ASTLoop(assembly_xref, body)
+
+    def mk_break_stmt(
+            self,
+            opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
+        assembly_xref = (
+            self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
+        return AST.ASTBreakOrContinue(assembly_xref, "break")
+
+    def mk_goto_stmt(
+            self,
+            label: str,
+            opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
+        assembly_xref = (
+            self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
+        return AST.ASTGoto(assembly_xref, label)
+
+    def mk_label_stmt(
+            self,
+            label: str,
+            opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
+        assembly_xref = (
+            self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
+        return AST.ASTLabel(assembly_xref, label)
+
     def mk_return_stmt(
             self,
             expr: Optional[AST.ASTExpr],

@@ -300,8 +300,20 @@ class ASTSerializer(ASTIndexer):
         if stmt.is_ast_return:
             return self.index_return_stmt(cast(AST.ASTReturn, stmt))
 
+        elif stmt.is_ast_break or stmt.is_ast_continue:
+            return self.index_break_or_continue_stmt(cast(AST.ASTBreakOrContinue, stmt))
+
+        elif stmt.is_ast_goto:
+            return self.index_goto_stmt(cast(AST.ASTGoto, stmt))
+
+        elif stmt.is_ast_label:
+            return self.index_label_stmt(cast(AST.ASTLabel, stmt))
+
         elif stmt.is_ast_block:
             return self.index_block_stmt(cast(AST.ASTBlock, stmt))
+
+        elif stmt.is_ast_loop:
+            return self.index_loop_stmt(cast(AST.ASTLoop, stmt))
 
         elif stmt.is_ast_instruction_sequence:
             return self.index_instruction_sequence_stmt(
@@ -324,7 +336,37 @@ class ASTSerializer(ASTIndexer):
             args.append(-1)
         return self.add(tags, args, node)
 
+    def index_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> int:
+        tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
+        args: List[int] = []
+        node: Dict[str, Any] = {"tag": stmt.tag}
+        node["assembly-xref"] = stmt.assembly_xref
+        return self.add(tags, args, node)
+
+    def index_goto_stmt(self, stmt: AST.ASTGoto) -> int:
+        tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
+        args: List[int] = []
+        node: Dict[str, Any] = {"tag": stmt.tag}
+        node["assembly-xref"] = stmt.assembly_xref
+        node["label"] = stmt._label
+        return self.add(tags, args, node)
+
+    def index_label_stmt(self, stmt: AST.ASTLabel) -> int:
+        tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
+        args: List[int] = []
+        node: Dict[str, Any] = {"tag": stmt.tag}
+        node["assembly-xref"] = stmt.assembly_xref
+        node["label"] = stmt._label
+        return self.add(tags, args, node)
+
     def index_block_stmt(self, stmt: AST.ASTBlock) -> int:
+        tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
+        args: List[int] = [s.index(self) for s in stmt.stmts]
+        node: Dict[str, Any] = {"tag": stmt.tag}
+        node["assembly-xref"] = stmt.assembly_xref
+        return self.add(tags, args, node)
+
+    def index_loop_stmt(self, stmt: AST.ASTBlock) -> int:
         tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
         args: List[int] = [s.index(self) for s in stmt.stmts]
         node: Dict[str, Any] = {"tag": stmt.tag}

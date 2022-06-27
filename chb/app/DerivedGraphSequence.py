@@ -38,7 +38,7 @@ import chb.util.dotutil as UD
 
 
 class GraphInterval:
-    """Maximual single-entry subgraph in which the header node appears in all closed paths."""
+    """Maximal single-entry subgraph in which the header node appears in all closed paths."""
 
     def __init__(self, header: str) -> None:
         self._header = header
@@ -48,7 +48,6 @@ class GraphInterval:
         self._rpo: Dict[str, int] = {}
         self._dom: Dict[str, Set[str]] = {}  # dominators
         self._idom: Dict[str, str] = {}  # immediate dominators
-        self._twowayconditionals: Dict[str, str] = {}
 
     @property
     def nodes(self) -> Set[str]:
@@ -137,58 +136,6 @@ class GraphInterval:
                     continue
                 self._idom[n] = max(self.dom[n] - set([n]), key=lambda k: self.rpo[k])
         return self._idom
-
-    @property
-    def two_way_conditionals(self) -> Dict[str, str]:
-        """Identify 2-way conditionals and their follow nodes.
-
-        Based on algorithm in:
-        Cristina Cifuentes, Structuring Decompiled Graphs, Compiler Construction,
-        CC'96, LNCS 1060, pg 91-105, Springer, 1996.
-        """
-
-        def find_follow(m: str) -> Optional[str]:
-            followcandidates: List[str] = [
-                i for i in self.nodes
-                if i != self.header and self.idom[i] == m and len(self.pre(i)) >= 2]
-            if len(followcandidates) > 0:
-                return max(followcandidates, key=lambda k: self.rpo[k])
-            else:
-                return None
-
-        def is_descendant(child: str, parent: str) -> bool:
-            for i in self.post(parent):
-                if child == i:
-                    return True
-                if is_descendant(child, i):
-                    return True
-            return False
-
-        unresolved: Set[str] = set([])
-
-        if len(self._twowayconditionals) == 0:
-            for m in self.rpo_revsorted_nodes:
-                if (
-                        len(self.post(m)) == 2       # 2-way conditional
-                        and ((not m == self.header)
-                             or len(self.pre(m)) == 0)  # not a loop header
-                        and self.header not in self.post(m)):  # not a latching node
-                    follow = find_follow(m)
-                    if follow is not None:
-                        self._twowayconditionals[m] = follow
-                        toberemoved: List[str] = []
-                        for k in unresolved:
-                            if is_descendant(follow, k):
-                                self._twowayconditionals[k] = follow
-                                toberemoved.append(k)
-                        for k in toberemoved:
-                            unresolved.remove(k)
-                    else:
-                        unresolved.add(m)
-
-        if len(unresolved) > 0:
-            print("Unresolved two-way conditional: " + ", ".join(unresolved))
-        return self._twowayconditionals
 
     def post(self, n) -> Set[str]:
         if n in self.edges:
@@ -506,10 +453,6 @@ class DerivedGraphSequence:
                 g.to_dot("G" + str(i+1), rpo=self.hrpo, showintervals=True))
             print(pdffilename)
 
-    def two_way_conditionals(self) -> Dict[str, str]:
-        i = list(self.graphs[0].intervals.values())[0]
-        return i.two_way_conditionals
-
     def __str__(self) -> str:
         lines: List[str] = []
         lines.append("\nDerived graph sequence for " + str(len(self.nodes)) + " nodes")
@@ -517,3 +460,10 @@ class DerivedGraphSequence:
         for g in self.graphs:
             lines.append(str(g))
         return "\n\n".join(lines)
+
+    def __repr__(self) -> str:
+        return f"""DerivedGraphSequence(
+                    {self._faddr},
+                    {self._nodes},
+                    {self._edges})"""
+

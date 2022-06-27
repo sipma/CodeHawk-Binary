@@ -38,7 +38,19 @@ class ASTNOPVisitor(ASTVisitor):
     def visit_return_stmt(self, stmt: AST.ASTReturn) -> None:
         pass
 
+    def visit_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> None:
+        pass
+
+    def visit_goto_stmt(self, stmt: AST.ASTGoto) -> None:
+        pass
+
+    def visit_label_stmt(self, stmt: AST.ASTLabel) -> None:
+        pass
+
     def visit_block_stmt(self, stmt: AST.ASTBlock) -> None:
+        pass
+
+    def visit_loop_stmt(self, stmt: AST.ASTLoop) -> None:
         pass
 
     def visit_instruction_sequence_stmt(

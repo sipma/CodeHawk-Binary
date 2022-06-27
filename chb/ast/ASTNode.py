@@ -308,7 +308,27 @@ class ASTStmt(ASTNode):
         return False
 
     @property
+    def is_ast_break(self) -> bool:
+        return False
+
+    @property
+    def is_ast_continue(self) -> bool:
+        return False
+
+    @property
+    def is_ast_goto(self) -> bool:
+        return False
+
+    @property
+    def is_ast_label(self) -> bool:
+        return False
+
+    @property
     def is_ast_block(self) -> bool:
+        return False
+
+    @property
+    def is_ast_loop(self) -> bool:
         return False
 
     @property
@@ -385,6 +405,80 @@ class ASTReturn(ASTStmt):
             return set([])
 
 
+class ASTBreakOrContinue(ASTStmt):
+
+    def __init__(self, assembly_xref: int, flavor: str) -> None:
+        assert flavor in ["break", "continue"]
+        ASTStmt.__init__(self, assembly_xref, flavor)
+        self._flavor = flavor
+
+    @property
+    def is_ast_break(self) -> bool:
+        return self._flavor == "break"
+
+    @property
+    def is_ast_continue(self) -> bool:
+        return self._flavor == "continue"
+
+    def accept(self, visitor: "ASTVisitor") -> None:
+        return visitor.visit_break_or_continue_stmt(self)
+
+    def transform(self, transformer: "ASTTransformer") -> "ASTStmt":
+        return transformer.transform_break_or_continue_stmt(self)
+
+    def index(self, indexer: "ASTIndexer") -> int:
+        return indexer.index_break_or_continue_stmt(self)
+
+    def ctype(self, ctyper: "ASTCTyper") -> Optional["ASTTyp"]:
+        return ctyper.ctype_break_or_continue_stmt(self)
+
+
+class ASTGoto(ASTStmt):
+
+    def __init__(self, assembly_xref: int, label: str) -> None:
+        ASTStmt.__init__(self, assembly_xref, "goto")
+        self._label = label
+
+    @property
+    def is_ast_goto(self) -> bool:
+        return True
+
+    def accept(self, visitor: "ASTVisitor") -> None:
+        return visitor.visit_goto_stmt(self)
+
+    def transform(self, transformer: "ASTTransformer") -> "ASTStmt":
+        return transformer.transform_goto_stmt(self)
+
+    def index(self, indexer: "ASTIndexer") -> int:
+        return indexer.index_goto_stmt(self)
+
+    def ctype(self, ctyper: "ASTCTyper") -> Optional["ASTTyp"]:
+        return ctyper.ctype_goto_stmt(self)
+
+
+class ASTLabel(ASTStmt):
+
+    def __init__(self, assembly_xref: int, label: str) -> None:
+        ASTStmt.__init__(self, assembly_xref, "label")
+        self._label = label
+
+    @property
+    def is_ast_label(self) -> bool:
+        return True
+
+    def accept(self, visitor: "ASTVisitor") -> None:
+        return visitor.visit_label_stmt(self)
+
+    def transform(self, transformer: "ASTTransformer") -> "ASTStmt":
+        return transformer.transform_label_stmt(self)
+
+    def index(self, indexer: "ASTIndexer") -> int:
+        return indexer.index_label_stmt(self)
+
+    def ctype(self, ctyper: "ASTCTyper") -> Optional["ASTTyp"]:
+        return ctyper.ctype_label_stmt(self)
+
+
 class ASTBlock(ASTStmt):
 
     def __init__(self, assembly_xref: int, stmts: List["ASTStmt"]) -> None:
@@ -441,6 +535,62 @@ class ASTBlock(ASTStmt):
         lines.append("\n".join(str(s) for s in self.stmts))
         return "\n".join(lines)
 
+
+class ASTLoop(ASTStmt):
+
+    def __init__(self, assembly_xref: int, body: "ASTStmt") -> None:
+        ASTStmt.__init__(self, assembly_xref, "loop")
+        self._stmts = [body]
+
+    @property
+    def is_ast_loop(self) -> bool:
+        return True
+
+    @property
+    def stmts(self) -> Sequence["ASTStmt"]:
+        return self._stmts
+
+    def accept(self, visitor: "ASTVisitor") -> None:
+        visitor.visit_loop_stmt(self)
+
+    def transform(self, transformer: "ASTTransformer") -> "ASTStmt":
+        return transformer.transform_loop_stmt(self)
+
+    def index(self, indexer: "ASTIndexer") -> int:
+        return indexer.index_loop_stmt(self)
+
+    def ctype(self, ctyper: "ASTCTyper") -> Optional["ASTTyp"]:
+        return ctyper.ctype_loop_stmt(self)
+
+    def is_empty(self) -> bool:
+        return all(s.is_empty() for s in self.stmts)
+
+    def address_taken(self) -> Set[str]:
+        if self.is_empty():
+            return set([])
+        else:
+            return self.stmts[0].address_taken().union(
+                *(s.address_taken() for s in self.stmts[1:]))
+
+    def variables_used(self) -> Set[str]:
+        if self.is_empty():
+            return set([])
+        else:
+            return self.stmts[0].variables_used().union(
+                *(s.variables_used() for s in self.stmts[1:]))
+
+    def callees(self) -> Set[str]:
+        if self.is_empty():
+            return set([])
+        else:
+            return self.stmts[0].callees().union(
+                *(s.callees() for s in self.stmts[1:]))
+
+    def __str__(self) -> str:
+        lines: List[str] = []
+        lines.append(ASTNode.__str__(self))
+        lines.append("\n".join(str(s) for s in self.stmts))
+        return "\n".join(lines)
 
 class ASTInstrSequence(ASTStmt):
 

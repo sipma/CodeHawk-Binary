@@ -33,10 +33,12 @@ from typing import (
     Callable,
     cast,
     Dict,
+    Iterable,
     List,
     Mapping,
     NewType,
     Optional,
+    Set,
     Sequence,
     Tuple,
     TYPE_CHECKING,
@@ -369,8 +371,20 @@ class ASTInterface:
     def mk_block(self, stmts: List[AST.ASTStmt]) -> AST.ASTBlock:
         return self.astree.mk_block(stmts)
 
+    def mk_loop(self, body: AST.ASTStmt) -> AST.ASTLoop:
+        return self.astree.mk_loop(body)
+
     def mk_return_stmt(self, expr: Optional[AST.ASTExpr]) -> AST.ASTReturn:
         return self.astree.mk_return_stmt(expr)
+
+    def mk_break_stmt(self) -> AST.ASTBreakOrContinue:
+        return self.astree.mk_break_stmt()
+
+    def mk_goto_stmt(self, label: str) -> AST.ASTGoto:
+        return self.astree.mk_goto_stmt(label)
+
+    def mk_label_stmt(self, label: str) -> AST.ASTLabel:
+        return self.astree.mk_label_stmt(label)
 
     def mk_branch(
             self,

@@ -192,8 +192,16 @@ class ASTCPrettyPrinter(ASTVisitor):
     def stmt_to_c(self, stmt: AST.ASTStmt) -> None:
         if stmt.is_ast_return:
             self.visit_return_stmt(cast(AST.ASTReturn, stmt))
+        elif stmt.is_ast_break or stmt.is_ast_continue:
+            self.visit_break_or_continue_stmt(cast(AST.ASTBreakOrContinue, stmt))
+        elif stmt.is_ast_goto:
+            self.visit_goto_stmt(cast(AST.ASTGoto, stmt))
+        elif stmt.is_ast_label:
+            self.visit_label_stmt(cast(AST.ASTLabel, stmt))
         elif stmt.is_ast_block:
             self.visit_block_stmt(cast(AST.ASTBlock, stmt))
+        elif stmt.is_ast_loop:
+            self.visit_loop_stmt(cast(AST.ASTLoop, stmt))
         elif stmt.is_ast_instruction_sequence:
             self.visit_instruction_sequence_stmt(cast(AST.ASTInstrSequence, stmt))
         elif stmt.is_ast_branch:
@@ -215,10 +223,31 @@ class ASTCPrettyPrinter(ASTVisitor):
         else:
             self.ccode.write("return;")
 
+    def visit_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> None:
+        self.ccode.newline(indent=self.indent)
+        self.ccode.write(stmt.tag + ";")
+
+    def visit_goto_stmt(self, stmt: AST.ASTGoto) -> None:
+        self.ccode.newline(indent=self.indent)
+        self.ccode.write("goto " + stmt._label + ";")
+
+    def visit_label_stmt(self, stmt: AST.ASTLabel) -> None:
+        self.ccode.newline(indent=self.indent)
+        self.ccode.write(stmt._label + ":")
+
     def visit_block_stmt(self, stmt: AST.ASTBlock) -> None:
         for s in stmt.stmts:
             if self.is_live(s.assembly_xref):
-                s.accept(self)
+                s.accept(self)                
+
+    def visit_loop_stmt(self, stmt: AST.ASTLoop) -> None:
+        self.ccode.write("while (1) {")
+        self.increase_indent()
+        for s in stmt.stmts:
+            if self.is_live(s.assembly_xref):
+                s.accept(self)    
+        self.decrease_indent()
+        self.ccode.write("}")
 
     def visit_instruction_sequence_stmt(self, stmt: AST.ASTInstrSequence) -> None:
         for i in stmt.instructions:

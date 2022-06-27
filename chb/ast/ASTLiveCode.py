@@ -88,7 +88,28 @@ class ASTLiveCode(ASTNOPVisitor):
             self.set_live_x(set([]))
         self._livestmts.add(stmt.assembly_xref)
 
+    def visit_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> None:
+        self.set_live_on_exit(stmt.assembly_xref, self.live_x)
+        self._livestmts.add(stmt.assembly_xref)
+
+    def visit_goto_stmt(self, stmt: AST.ASTGoto) -> None:
+        # TODO???
+        self.set_live_on_exit(stmt.assembly_xref, self.live_x)
+        self._livestmts.add(stmt.assembly_xref)
+
+    def visit_label_stmt(self, stmt: AST.ASTLabel) -> None:
+        self.set_live_on_exit(stmt.assembly_xref, self.live_x)
+        self._livestmts.add(stmt.assembly_xref)
+
     def visit_block_stmt(self, stmt: AST.ASTBlock) -> None:
+        self.set_live_on_exit(stmt.assembly_xref, self.live_x)
+        for s in reversed(stmt.stmts):
+            s.accept(self)
+        self._livestmts.add(stmt.assembly_xref)
+
+
+    def visit_loop_stmt(self, stmt: AST.ASTLoop) -> None:
+        # TODO(brk): any differences for loop versus block?
         self.set_live_on_exit(stmt.assembly_xref, self.live_x)
         for s in reversed(stmt.stmts):
             s.accept(self)

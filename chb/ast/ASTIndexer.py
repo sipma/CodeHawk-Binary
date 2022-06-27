@@ -41,7 +41,23 @@ class ASTIndexer(ABC):
         ...
 
     @abstractmethod
+    def index_break_or_continue_stmt(self, stmt: AST.ASTBreakOrContinue) -> int:
+        ...
+
+    @abstractmethod
+    def index_goto_stmt(self, stmt: AST.ASTGoto) -> int:
+        ...
+
+    @abstractmethod
+    def index_label_stmt(self, stmt: AST.ASTLabel) -> int:
+        ...
+
+    @abstractmethod
     def index_block_stmt(self, stmt: AST.ASTBlock) -> int:
+        ...
+
+    @abstractmethod
+    def index_loop_stmt(self, stmt: AST.ASTLoop) -> int:
         ...
 
     @abstractmethod
