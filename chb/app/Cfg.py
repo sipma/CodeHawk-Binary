@@ -449,7 +449,11 @@ class Cfg:
 
         non_goto_backedges = all_backedges - gotoedges
 
-        labeled_stmts = set(tgt for _, tgt in gotoedges)
+        # Cifuentes used mutable state to toggle labels as needed when used
+        # by gotos. We generate label AST nodes before the gotos are emitted, so we
+        # need a conservative approximation of the labels that might be used.
+        cross_edges = set(e for e, flavor in rg._edge_flavors.items() if flavor == 'cross')
+        labeled_stmts = set(tgt for _, tgt in gotoedges | cross_edges)
 
         breakedges = set()
         # For each loop header, the break target is the first *out of the loop*

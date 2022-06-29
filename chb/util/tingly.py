@@ -17,14 +17,20 @@ class RootedDiGraph:
         self._twowayconditionals: Dict[str, str] = {} # follow nodes
         self._idoms: Dict[UserNodeID, Optional[UserNodeID]] = {n:None for n in nodes} # immediate dominator
         
-        self._compute_dfs()
+        self._compute_dfs() # First DFS computes the reverse postorder list.
+        self._compute_dfs() # DFS in RPO order can produce fewer cross edges.
         self._compute_doms()
 
     def _compute_dfs(self) -> None:
+        """Initializes the reverse postorder list."""
         visited = set()
         starttime = {v:0 for v in self.nodes}
         endtime = {v:0 for v in self.nodes}
         vtime = 0
+
+        prev_rpo = self._rpo_sorted
+        self._rpo_sorted = []
+        self._rpo = {}
 
         def visit(node: str) -> None:
             nonlocal vtime
@@ -32,7 +38,14 @@ class RootedDiGraph:
             starttime[node] = vtime
             vtime += 1
 
-            for t in self.post(node):
+            successors = self.post(node)
+            if len(prev_rpo) > 0:
+                succ_idxs = sorted(prev_rpo.index(x) for x in successors)
+                successors = [prev_rpo[i] for i in succ_idxs]
+
+            # Doing DFS a second time, visiting the successors in reverse postorder,
+            # helps to avoid unnecessary cross edges.
+            for t in successors:
                 if t not in visited:
                     self._edge_flavors[(node, t)] = "tree"
                     visit(t)
