@@ -139,8 +139,8 @@ class RootedDiGraph:
         Computes the dominators of each node.
 
         Implements the algorithm in:
-            Cristina Cifuentes, Structuring Decompiled Graphs, Compiler Construction,
-            CC'96, LNCS 1060, pg 91-105, Springer, 1996.
+            "A Simple, Fast Dominance Algorithm"
+            Keith D. Cooper, Timothy J. Harvey, and Ken Kennedy
             https://www.cs.rice.edu/~keith/EMBED/dom.pdf
         """
 
