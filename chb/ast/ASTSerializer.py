@@ -352,6 +352,8 @@ class ASTSerializer(ASTIndexer):
         return self.add(tags, args, node)
 
     def index_label_stmt(self, stmt: AST.ASTLabel) -> int:
+        if not stmt._printed:
+            return None # ehh
         tags: List[str] = [stmt.tag, str(stmt.assembly_xref)]
         args: List[int] = []
         node: Dict[str, Any] = {"tag": stmt.tag}
@@ -390,6 +392,7 @@ class ASTSerializer(ASTIndexer):
         args: List[int] = [instr.index(self) for instr in stmt.instructions]
         node: Dict[str, Any] = {"tag": stmt.tag}
         node["assembly-xref"] = stmt.assembly_xref
+        args = [x for x in args if x is not None]
         return self.add(tags, args, node)
 
     def index_assign_instr(self, instr: AST.ASTAssign) -> int:

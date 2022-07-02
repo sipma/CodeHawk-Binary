@@ -174,6 +174,13 @@ class AbstractSyntaxTree:
             self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
         return AST.ASTBreakOrContinue(assembly_xref, "break")
 
+    def mk_continue_stmt(
+            self,
+            opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
+        assembly_xref = (
+            self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
+        return AST.ASTBreakOrContinue(assembly_xref, "continue")
+
     def mk_goto_stmt(
             self,
             label: str,
@@ -185,10 +192,11 @@ class AbstractSyntaxTree:
     def mk_label_stmt(
             self,
             label: str,
+            printed: bool = False,
             opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
         assembly_xref = (
             self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
-        return AST.ASTLabel(assembly_xref, label)
+        return AST.ASTLabel(assembly_xref, label, printed)
 
     def mk_return_stmt(
             self,

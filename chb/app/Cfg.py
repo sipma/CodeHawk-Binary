@@ -148,7 +148,8 @@ class Cfg:
         rg = tingly.RootedDiGraph(self.derived_graph_sequence.nodes,
                                     self.derived_graph_sequence.edges,
                                     self.derived_graph_sequence.graphs[0].nodes[0])
-        ipostdoms = rg.ipostdoms()
+        rrg = rg.inverse_with_phantom_exit_node()
+        ipostdoms = tingly.RootedDiGraph.ipostdoms(rrg)
 
         def initial_loop_header_identification() -> Tuple[Dict[str, int], Set[Tuple[str, str]]]:
             loopdepths : Dict[str, int] = {}
@@ -212,10 +213,13 @@ class Cfg:
                 seen = set(worklist)
                 while worklist:
                     node = worklist.pop()
+                    assert rg.dominates(header, node)
+
                     if not node in incircuit:
                         incircuit[node] = []
                     incircuit[node].append(header)
                     if node != header:
+                        print("         adding unseen predecessors of", node, "to worklist:", [p for p in preds[node] if not p in seen])
                         for prev in preds[node]:
                             if not prev in seen:
                                 seen.add(prev)
@@ -224,7 +228,9 @@ class Cfg:
             return incircuit
 
         def determine_loop_scope(
+                    rg: tingly.RootedDiGraph,
                     backedge_levels: List[Tuple[int, str, str]],
+                    loopfollows: Dict[str, Optional[str]],
                     afterloop: Dict[str, Optional[str]]
                 ) -> Dict[str, List[str]]:
             inscope : Dict[str, List[str]] = {}
@@ -246,21 +252,34 @@ class Cfg:
                 seen = set(worklist)
                 print(f'         collecting scope body of {(_level, header)=}; {other_headers=}')
 
-                def known_different_scope(node):
-                    return node == afterloop[header] or node in other_headers
+                def process(n):
+                    if not n in seen:
+                        seen.add(n)
+                        worklist.append(n)
 
                 while worklist:
                     node = worklist.pop()
                     if not node in inscope:
                         inscope[node] = []
-                    if known_different_scope(node):
+                    if node == afterloop[header]:
                         continue
+                    if node in other_headers:
+                        # Ignore the body of the loop, but the follow node can be ours,
+                        # assuming it has only a single predecessor.
+                        for next in succs[node]:
+                            if next in incircuit and node in incircuit[next]:
+                                continue
+                            if len(rg.pre(next)) == 1:
+                                #assert next not in owners
+                                print(f"while determining loop scope, updating afterloop[{node}] to {next}")
+                                afterloop[node] = next
+                                process(next)
+                        continue
+
                     print(f'             marking {node=} as part of scope of {header=}')
                     inscope[node].append(header)
                     for next in succs[node]:
-                        if not next in seen:
-                            seen.add(next)
-                            worklist.append(next)
+                        process(next)
 
             return inscope
 
@@ -325,15 +344,28 @@ class Cfg:
 
         loopsignatures = []
         for norig, (src, hdr) in backedge_levels:
-            looptype = classify_loop(src, hdr, norig, ipostdoms)
-
             if hdr in incircuit and incircuit[hdr][0] != hdr:
-                print(f"           discarding loop candidate {(hdr,src,looptype,norig)=} since the header belongs to another loop ({incircuit[hdr]})")
+                print(f"           discarding loop candidate {(hdr,src,norig)=} since the header belongs to another loop ({incircuit[hdr]})")
             elif src in incircuit and incircuit[src][0] != hdr:
-                print(f"           discarding loop candidate {(hdr,src,looptype,norig)=} since the latch belongs to another loop ({incircuit[src]})")
+                print(f"           discarding loop candidate {(hdr,src,norig)=} since the latch belongs to another loop ({incircuit[src]})")
             else:
+                looptype = classify_loop(src, hdr, norig, ipostdoms)
                 loopfollow = determine_loopfollow(src, hdr, incircuit, looptype)
                 loopsignatures.append( (hdr, src, looptype, loopfollow, norig) )
+
+        sigs_by_hdr = {}
+        for hdr, src, looptype, loopfollow, norig in loopsignatures:
+            if not hdr in sigs_by_hdr:
+                sigs_by_hdr[hdr] = []
+            sigs_by_hdr[hdr].append( (src, looptype, loopfollow, norig) )
+
+        print(f"sigs_by_hdr:")
+        pprint.pprint(sigs_by_hdr, indent=4)
+        # for hdr in sigs_by_hdr:
+        #     looptypes = set(looptype for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])
+        #     assert len(looptypes) == 1, f"{hdr} => {looptypes=}"
+        #     assert len(set(loopfollow for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])) == 1
+        #     assert len(set(norig for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])) == 1
 
         
         loopfollows = {}
@@ -348,16 +380,22 @@ class Cfg:
             afterloop[hdr] = pdom
         afterloop.setdefault(None)
 
-        inscope = determine_loop_scope(backedge_levels, afterloop)
+        # The afterloop node is a candidate for the sequential successor statement
+        # for the loop, but if one loop contains another, and the inner loop is the
+        # only way to reach an exit node, and there are no `break`s from the outer loop,
+        # there need be no sequential successor for the outer loop. The afterloop node
+        # should not be used, since it would be better placed within the inner loop.
+
+        inscope = determine_loop_scope(rg, backedge_levels, loopfollows, afterloop)
         print(f"inscope:")
         pprint.pprint(inscope, indent=4)
 
 
         print(f"loopsignatures:")
         pprint.pprint(loopsignatures, indent=4)
-        
+
         backedges = set(edge for _, edge in backedge_levels)
-        return (incircuit, inscope, backedges, loopsignatures, loopfollows, afterloop, rg)
+        return (incircuit, inscope, backedges, loopsignatures, loopfollows, afterloop, rg, ipostdoms)
 
     def is_returning(self, stmt: AST.ASTStmt) -> bool:
         if isinstance(stmt, AST.ASTReturn):
@@ -381,17 +419,20 @@ class Cfg:
             c = sep.join(str(pp.ccode).split("\n"))
             print(f'{id} ==>{sep}{c}')
 
-        incircuit, inscope, all_backedges, loopsignatures, loopfollows, afterloop, rg = self.analyze_loops()
+        incircuit, inscope, all_backedges, loopsignatures, loopfollows, afterloop, rg, ipostdoms = self.analyze_loops()
         
         def loop_scope_for_node_is(n: str, tgt: str) -> bool:
             return n in inscope and len(inscope[n]) > 0 and inscope[n][0] == tgt
 
         idoms = rg.idoms
-        ipostdoms = rg.ipostdoms()
 
-        print(f"{idoms=}")
-        print(f'{ipostdoms=}')
         import pprint
+        print("idoms:")
+        pprint.pprint(idoms, indent=4)
+
+        print("ipostdoms:")
+        pprint.pprint(ipostdoms, indent=4)
+
         pprint.pprint(rg._edge_flavors, indent=4)
 
         print(f'loopfollows:')
@@ -401,6 +442,7 @@ class Cfg:
 
         loopheaders = set(sig[0] for sig in loopsignatures)
         latchingnodes = set(src for src, tgt in all_backedges)
+        print(f'{loopheaders=} ; {latchingnodes=}')
         twowayconds = rg.two_way_conditionals(loopheaders, latchingnodes)
 
         print(f'twowayconds:')
@@ -449,32 +491,105 @@ class Cfg:
 
         non_goto_backedges = all_backedges - gotoedges
 
-        # Cifuentes used mutable state to toggle labels as needed when used
-        # by gotos. We generate label AST nodes before the gotos are emitted, so we
-        # need a conservative approximation of the labels that might be used.
-        cross_edges = set(e for e, flavor in rg._edge_flavors.items() if flavor == 'cross')
-        labeled_stmts = set(tgt for _, tgt in gotoedges | cross_edges)
+        # Pre-generate a conservative approximation of the labels that might be used;
+        # when a goto is emitted, make sure the label it targets actually gets printed.
+        #cross_edges = set(e for e, flavor in rg._edge_flavors.items() if flavor == 'cross')
+        #labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for _, tgt in gotoedges | cross_edges }
+        labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for tgt in rg.rpo_sorted }
 
+        def scope_nesting_depth():
+            worklist = []
+            worklist.append( (rg.start_node, 0) )
+
+            depths = {node: len(rg.nodes) for node in rg.nodes}
+            owners = {}
+            seen = set()
+            while len(worklist) > 0:
+                (node, depth) = worklist.pop()
+                if node in seen:
+                    continue
+
+                seen.add(node)
+                depths[node] = min(depth, depths[node])
+
+                def process(succ, depth, followdict, tag):
+                    newdepth = depth
+                    roots = [hdr for hdr in followdict if followdict[hdr] == succ]
+                    for hdr in roots:
+                        if depths[hdr] < newdepth:
+                            newdepth = depths[hdr]
+                            owners[succ] = (hdr, tag)
+                    #print(f"exploring break edge {succ=} via {node=} with newdepth {newdepth}")
+                    worklist.append((succ, newdepth))
+
+                for succ in self.successors(node):
+                    if (node, succ) in all_backedges:
+                        continue
+
+                    if (node, succ) in gotoedges:
+                        continue
+
+                    if succ in afterloop.values():
+                        process(succ, depth, afterloop, 'loop')
+                        continue
+
+                    newdepth = depth
+                    if node in loopheaders:
+                        newdepth += 1
+                    if node in twowayconds:
+                        newdepth += 1
+
+                    if succ in twowayconds.values():
+                        process(succ, newdepth, twowayconds, 'cond')
+                        continue
+
+                    #print(f"exploring {succ=} via {node=} with depth {newdepth}")
+                    worklist.append((succ, newdepth))
+
+            print("scope nesting depths:")
+            pprint.pprint(depths, indent=4)
+
+            print("owners:")
+            pprint.pprint(owners, indent=4)
+            return owners
+
+        owners = scope_nesting_depth()
+        
         breakedges = set()
         # For each loop header, the break target is the first *out of the loop*
-        # postdominating node, and the break edges are those *from in the loop*
+        # postdominating node, if it is owned by the loop header. Loops can have
+        # an afterloop node that can only be reached via gotos!
+        # Given a break target, the break edges are those *from in the loop*
         # targeting it.
         for hdr in loopheaders:
             pdom = afterloop[hdr]
             print(f"::break target for {hdr=} is {pdom=} {inscope[pdom] if pdom in inscope else None}")
             for src in rg.edges:
-                for tgt in rg.edges[src]:
-                    if tgt == pdom:
-                        # The src node need not be "owned" by the loop, since non-owned
-                        # nodes can appear within the syntactic scope of the loop.
-                        if rg.dominates(hdr, src) and not rg.dominates(pdom, src):
-                            print(f"::::adding break edge owned by {hdr=} : {(src,tgt)=}")
-                            breakedges.add( (src, tgt) )
+                if pdom not in rg.edges[src]:
+                    continue
+                if rg.dominates(hdr, src) and not rg.dominates(pdom, src):
+                    src_outside_hdr = src in inscope and inscope[src][0] != hdr
+                    owned_elsewhere = pdom in owners and owners[pdom][0] != hdr
+                    if (not owned_elsewhere) and not src_outside_hdr:
+                        print(f"::::adding break edge owned by {hdr=} : {(src,pdom)=}")
+                        breakedges.add( (src, pdom) )
+                    else:
+                        print(f"::::adding goto edge owned by {hdr=} : {(src,pdom)=} ;; {owned_elsewhere=} {src_outside_hdr=}")
+                        gotoedges.add( (src, pdom) )
 
         def emit(n: str) -> List[AST.ASTStmt]:
+            if n not in blockstmts:
+                if n in labeled_stmts:
+                    return [labeled_stmts[n]]
+                #return [astree.mk_label_stmt("NoBlock_" + n)]
+                return []
+
             if n in labeled_stmts:
-                return [astree.mk_label_stmt(n), blockstmts[n]]
-            return [blockstmts[n]]
+                return [labeled_stmts[n], blockstmts[n]]
+
+            s = astree.mk_label_stmt("__" + n)
+            s._printed = True
+            return [s, blockstmts[n]]
 
         constructed_stmts = set()
         def construct(
@@ -490,19 +605,29 @@ class Cfg:
                     return astree.mk_block([])
 
                 if (n, succ) in breakedges:
-                        print(f"emitting break at edge {n=}->{succ=}  {loopheader=}")
+                        print(f"emitting break in loop at edge {n=}->{succ=}  {loopheader=}")
                         print(f"    {inscope[n] if n in inscope else None=}")
                         print(f"    {inscope[succ] if succ in inscope else None=}")
                         return astree.mk_break_stmt()
+
+                if (n, succ) in gotoedges:
+                    print(f"emitting goto in loop at edge {n=} {succ=} {loopheader=}")
+                    labeled_stmts[succ]._printed = True
+                    return astree.mk_goto_stmt(succ)
 
                 return construct(succ, follownode, loopheader, [])
 
             print(f"construct({n=}, {follow=}, {loopheader=})")
             if follow and n == follow:
+                print(f"stopping at {follow=} and returning what's been collected so far")
                 return astree.mk_block(result)
+
+            #if follow and:
+            #    return astree.mk_block(result)
 
             if n in constructed_stmts:
                 print(f"###########################  already constructed {n=}; emitting an unexpected goto")
+                labeled_stmts[n]._printed = True
                 return astree.mk_block(result + [astree.mk_goto_stmt(n)])
             else:
                 constructed_stmts.add(n)
@@ -514,17 +639,27 @@ class Cfg:
                 # Loop headers are those for which `inloop[n][0] == n`.
                 # When we encounter it the first time, we recur with
                 # a new `loopheader` flag so that we don't infinitely recurse.
-                print(f"encountered loop header node {n=}, {len(result)=}")
                 follownode = afterloop[n]
-                print(f'{follownode=} for {n=} ; {loopheader=}')
+                print(f"LOOP LOOP LOOP LOOP LOOP encountered loop header node {n=}, {len(result)=}")
+                print(f'                {follownode=} ; {loopheader=} ; {follow=} ; {owners=}')
                 constructed_stmts.remove(n)
                 body = construct(n, follow, n, [])
                 loop = astree.mk_loop(body)
-                if follownode:
-                    # In rare cases, the follow node may have multiple predecessors.
-                    # In order to avoid emitting the same nodes multiple times, we
-                    # need to instead emit a goto for all but one of the predecessor
-                    # loops.
+                if follownode and (follownode not in owners or owners[follownode] == (n, 'loop')):
+                    # It's possible for two nested loops to share an afterloop node.
+                    # Without any special-case handling, the inner loop would emit
+                    # a break at the edge to the follownode, then call construct()
+                    # with n=follownode=follow, which would result in an empty statement
+                    # after the inner loop. This is wrong because the break would then
+                    # implicitly continue to the outer loop's header, not the follownode!
+                    # In effect, the inner loop's follow node is not its syntactic successor,
+                    # so we need a goto instead of a break.
+                    # A testcase which exercises this codepath is
+                    #       cram-tests/codehawk-lifting/loops-gotos-c
+                    # if follownode == follow:
+                    #     assert False, "follownode == follow"
+                    #     labeled_stmts[follownode]._printed = True
+                    #     return astree.mk_block(result + [loop, astree.mk_goto_stmt(follownode)])
 
 
                     # Continue slurping up nodes past the loop we just constructed
@@ -542,10 +677,10 @@ class Cfg:
                 if (n, next) in non_goto_backedges:
                     if loopheader == next:
                         print(f"ending construct early at {n=} {next=} due to backedge...")
-                        return astree.mk_block(result + emit(n))
                     else:
                         print(f"ending construct early (different loopheader) at {n=} {next=} due to backedge...")
-                        return astree.mk_block(result + emit(n))
+                    return astree.mk_block(result + emit(n) + [astree.mk_continue_stmt()])
+                    #return astree.mk_block(result + emit(n))
 
                 if (n, next) in breakedges:
                         print(f"emitting break at edge {n=}->{next=}  {loopheader=}")
@@ -554,8 +689,9 @@ class Cfg:
                         return astree.mk_block(result + emit(n) + [astree.mk_break_stmt()])
 
                 if (n, next) in gotoedges:
-                    print(f"ending construct early at {n=} due to goto...")
-                    return astree.mk_block(result + emit(n) + [astree.mk_goto_stmt(next)])    
+                    print(f"ending construct early at {n=} due to goto {next=}...")
+                    labeled_stmts[next]._printed = True
+                    return astree.mk_block(result + emit(n) + [astree.mk_goto_stmt(next)])  
 
                 print((n,next), 'was not in gotoedges')
                 return construct(next, follow, loopheader, result + emit(n))
@@ -598,12 +734,19 @@ class Cfg:
                 astree.add_instruction_span(
                     bstmt.assembly_xref, branchinstr.iaddr, branchinstr.bytestring)
 
-                print(f',,,,,, handling continuation of 2-succ node {n=} {loopheader=} {follownode=} {follow=}')
-                if follownode:
-                    return construct(
-                        follownode, follow, loopheader, result + emit(n) + [bstmt])
-                else:
+                # If the afterloop node is the same as the join point for the loop header,
+                # the afterloop node should be processed by the code that emits the loop construct,
+                # so we should only process follownodes that aren't also afterloop nodes.
+                # We should also skip emitting follow nodes that we don't own.
+                if (not follownode \
+                        or (n == loopheader and afterloop[loopheader] == follownode) \
+                        or (follownode in owners and owners[follownode] != (n, 'cond'))):
+                    print(f',,,,,, skipping continuation of 2-succ node {n=} {loopheader=} {follownode=} {follow=}')
                     return astree.mk_block(result + emit(n) + [bstmt])
+
+                print(f',,,,,, constructing continuation of 2-succ node {n=} {loopheader=} {follownode=} {follow=}')
+                return construct(
+                    follownode, follow, loopheader, result + emit(n) + [bstmt])
             else:
                 raise UF.CHBError("Multi branch for " + n)
 

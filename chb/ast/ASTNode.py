@@ -458,9 +458,10 @@ class ASTGoto(ASTStmt):
 
 class ASTLabel(ASTStmt):
 
-    def __init__(self, assembly_xref: int, label: str) -> None:
+    def __init__(self, assembly_xref: int, label: str, printed: bool) -> None:
         ASTStmt.__init__(self, assembly_xref, "label")
         self._label = label
+        self._printed = printed
 
     @property
     def is_ast_label(self) -> bool:

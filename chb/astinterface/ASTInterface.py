@@ -380,6 +380,9 @@ class ASTInterface:
     def mk_break_stmt(self) -> AST.ASTBreakOrContinue:
         return self.astree.mk_break_stmt()
 
+    def mk_continue_stmt(self) -> AST.ASTBreakOrContinue:
+        return self.astree.mk_continue_stmt()
+
     def mk_goto_stmt(self, label: str) -> AST.ASTGoto:
         return self.astree.mk_goto_stmt(label)
 

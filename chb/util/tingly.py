@@ -108,13 +108,17 @@ class RootedDiGraph:
         else:
             return set([])
 
-    def ipostdoms(self):
+    def inverse_with_phantom_exit_node(self) -> 'RootedDiGraph':
+        """
+        Returns the inverse of the graph, .
+        """
         phantomend = '__' + str(len(self.nodes))
         augedges = self.revedges.copy()
         terminators = [node for node in self.nodes if len(self.post(node)) == 0]
         augedges[phantomend] = terminators
-        rrg = RootedDiGraph(self.nodes + [phantomend], augedges, phantomend)
+        return RootedDiGraph(self.nodes + [phantomend], augedges, phantomend)
 
+    def ipostdoms(rrg: 'RootedDiGraph') -> Dict[UserNodeID, Set[UserNodeID]]:
         if True:
             import chb.util.dotutil as UD
             from chb.util.DotGraph import DotGraph
@@ -131,7 +135,7 @@ class RootedDiGraph:
         #print(rrg.nodes)
         #print(rrg.edges)
         idoms = rrg.idoms
-        del idoms[phantomend]
+        del idoms[rrg.start_node]
         return idoms
             
     def _compute_doms(self) -> None:
@@ -208,14 +212,13 @@ class RootedDiGraph:
             finger = self._idoms[finger]
         return False
 
-    
     def two_way_conditionals(self, loopheaders: Set[str], latchingnodes: Set[str]) -> Dict[str, str]:
         """Identify 2-way conditionals and their follow nodes.
 
         Based on algorithm in:
             Cristina Cifuentes, Structuring Decompiled Graphs, Compiler Construction,
             CC'96, LNCS 1060, pg 91-105, Springer, 1996.
-            https://www.cs.rice.edu/~keith/EMBED/dom.pdf
+            https://link.springer.com/content/pdf/10.1007/3-540-61053-7_55.pdf
         """
 
         def find_follow(m: str) -> Optional[str]:
@@ -228,6 +231,18 @@ class RootedDiGraph:
                 return None
 
         def is_descendant(child: str, parent: str) -> bool:
+            # Consider a graph arising from 
+            #     while (x() && y()) { d() } return;
+            # which looks like:
+            #     H -> A -> B -> C -> D -> H...
+            #      \->--------->/  \> E
+            # The algorithm below processes C first, leaving it
+            # unresolved. Then it processes H, which identifies
+            # C as the follow node. The unresolved check then calls
+            # is_descendant(C, C) which must return False, or else
+            # node C will be considered to be its own follow node!
+            if child == parent:
+                return False
             worklist = [child]
             seen = set()
             while worklist:
@@ -237,7 +252,11 @@ class RootedDiGraph:
                 if node in seen:
                     continue
                 seen.add(node)
-                worklist.extend(self.pre(node))
+                for pred in self.pre(node):
+                    # Don't consider backedges!
+                    if self.edge_flavor(pred, node) == 'back':
+                        continue
+                    worklist.append(pred)   
             return False
 
         unresolved: Set[str] = set([])
@@ -245,15 +264,16 @@ class RootedDiGraph:
         if len(self._twowayconditionals) == 0:
             for m in reversed(self._rpo_sorted):
                 if (    len(self.post(m)) == 2   # 2-way conditional
-                        and not m in loopheaders  # not a loop header
+                        #and not m in loopheaders  # not a loop header
                         and not m in latchingnodes):  # not a latching node
                     follow = find_follow(m)
-                    print(f"        {follow=}")
+                    print(f"   _twowayconditionals:     {m=} {follow=}")
                     if follow is not None:
                         self._twowayconditionals[m] = follow
                         toberemoved: List[str] = []
                         for k in unresolved:
                             if is_descendant(follow, k):
+                                print(f"   _twowayconditionals updating {k=} as descendent to have {follow=} from {m=}")
                                 self._twowayconditionals[k] = follow
                                 toberemoved.append(k)
                         for k in toberemoved:
