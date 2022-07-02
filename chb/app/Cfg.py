@@ -645,32 +645,17 @@ class Cfg:
                 constructed_stmts.remove(n)
                 body = construct(n, follow, n, [])
                 loop = astree.mk_loop(body)
-                if follownode and (follownode not in owners or owners[follownode] == (n, 'loop')):
-                    # It's possible for two nested loops to share an afterloop node.
-                    # Without any special-case handling, the inner loop would emit
-                    # a break at the edge to the follownode, then call construct()
-                    # with n=follownode=follow, which would result in an empty statement
-                    # after the inner loop. This is wrong because the break would then
-                    # implicitly continue to the outer loop's header, not the follownode!
-                    # In effect, the inner loop's follow node is not its syntactic successor,
-                    # so we need a goto instead of a break.
-                    # A testcase which exercises this codepath is
-                    #       cram-tests/codehawk-lifting/loops-gotos-c
-                    # if follownode == follow:
-                    #     assert False, "follownode == follow"
-                    #     labeled_stmts[follownode]._printed = True
-                    #     return astree.mk_block(result + [loop, astree.mk_goto_stmt(follownode)])
-
-
-                    # Continue slurping up nodes past the loop we just constructed
+                follownode_owned_by_loop_if_any = follownode not in owners or (n, 'loop') == owners[follownode]
+                if follownode and follownode_owned_by_loop_if_any:
+                    # A testcase which requires the follownode_owned_by_loop check is
+                    #       cram-tests/codehawk-lifting/loops-gotos-b
                     return construct(
                         follownode, follow, loopheader, result + [loop])
-                else:
-                    # No more nodes to slurp up; return what we have so far, plus our loop
-                    if result == []:
-                        return loop
-                    return astree.mk_block(result + [loop])
-                assert False # make sure we don't accidentally fall through!
+
+                # No more nodes to slurp up; return what we have so far, plus our loop
+                if result == []:
+                    return loop
+                return astree.mk_block(result + [loop])
 
             if len(self.successors(n)) == 1:
                 next = self.successors(n)[0]
