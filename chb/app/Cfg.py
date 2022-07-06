@@ -443,8 +443,8 @@ class Cfg:
 
         loopheaders = set(sig[0] for sig in loopsignatures)
         latchingnodes = set(src for src, tgt in all_backedges)
-        print(f'{loopheaders=} ; {latchingnodes=}')
-        twowayconds = rg.two_way_conditionals(loopheaders, latchingnodes)
+        print(f'{loopheaders=} ; {latchingnodes=} (ndet ok)')
+        twowayconds = rg.two_way_conditionals(latchingnodes)
 
         print(f'twowayconds:')
         pprint.pprint(twowayconds, indent=4)

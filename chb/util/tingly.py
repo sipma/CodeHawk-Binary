@@ -200,7 +200,7 @@ class RootedDiGraph:
             finger = self._idoms[finger]
         return False
 
-    def two_way_conditionals(self, loopheaders: Set[str], latchingnodes: Set[str]) -> Dict[str, str]:
+    def two_way_conditionals(self, latchingnodes: Set[str]) -> Dict[str, str]:
         """Identify 2-way conditionals and their follow nodes.
 
         Based on algorithm in:
