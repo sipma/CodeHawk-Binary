@@ -61,6 +61,381 @@ import chb.util.fileutil as UF
 if TYPE_CHECKING:
     from chb.app.Function import Function
 
+def loop_scope_for_node_is(n: str, tgt: str, inscope) -> bool:
+    return n in inscope and len(inscope[n]) > 0 and inscope[n][0] == tgt
+
+class LoopAnalysis:
+    def __init__(self, rg: tingly.RootedDiGraph,
+                       dgs: DerivedGraphSequence):
+        self.flowgraph = rg
+        self.derived_graph_sequence = dgs
+    
+    def analyze_loops(self):
+        rfg = self.flowgraph.inverse_with_phantom_exit_node()
+        ipostdoms = tingly.RootedDiGraph.ipostdoms(rfg)
+
+        fg = self.flowgraph
+
+        def initial_loop_header_identification() -> Tuple[Dict[str, int], Set[Tuple[str, str]]]:
+            loopdepths : Dict[str, int] = {}
+            loopcandidates : Set[Tuple[str, str]] = set()
+
+            for n, gn in enumerate(self.derived_graph_sequence.graphs):
+                for header in sorted(gn.intervals.keys()):
+                    gin = gn.intervals[header]
+                    print(f'header for interval at graph level {n=} is {header=}')
+                    for src in gin.edges:
+                        for tgt in gin.edges[src]:
+                            print(' ' * n + f"considering edge {src=} -> {tgt=} at loop level {n=}")
+                            if tgt == header:
+                                assert (header not in loopdepths or loopdepths[header] == n)
+                                loopdepths[header] = n
+                                # The src node is in an interval at level n, but we're ultimately
+                                # interested in the node(s) within the equivalent interval(s) at
+                                # level 0.
+                                loopcandidates.add( (header, src) )
+            return loopdepths, loopcandidates
+
+        def expand_interval_nodes(node, level) -> List[str]:
+            return self.derived_graph_sequence.graphs[level - 1].intervals[node].nodes
+
+        def find_level_0_backedges(loopcandidates : List[Tuple[str, str]],
+                                   loopdepths : Dict[str, int]
+                                  ) -> List[Tuple[int, Tuple[str, str]]]:
+            backedge_levels : List[Tuple[int, str, str]] = []
+            for hdr, src_n in loopcandidates:
+                # The worklist contains interval nodes targeting hdr with a backedge.
+                # For interval depths > 0, we need to (recursively) peek inside the
+                # interval to find the node within it which contains the backedge.
+                worklist = [ (src_n, loopdepths[hdr], loopdepths[hdr]) ]
+                while len(worklist) > 0:
+                    (src, n, norig) = worklist.pop()
+                    if n == 0:
+                        print(f"found level-0 backedge from {src} to {hdr}")
+                        backedge_levels.append( (norig, (src, hdr)) )
+                    else:
+                        for node in expand_interval_nodes(src, n):
+                            if hdr in self.flowgraph.post(node):
+                                print(f"found backedge at level {n-1=} from {node} to {hdr}")
+                                worklist.append( (node, n - 1, norig) )
+            return backedge_levels
+
+        def determine_loop_circuit(
+                    backedge_levels: List[Tuple[int, str, str]]
+                ) -> Dict[str, List[str]]:
+            incircuit : Dict[str, List[str]] = {}
+            preds = self.derived_graph_sequence.graphs[0].revedges
+
+            # We iterate by level to ensure that each node
+            # is associated with the innermost nested loop which contains it.
+            backedge_levels.sort(key=lambda tup: tup[0])
+            
+
+            # The nodes in a loop's circuit are found by iterating backwards from
+            # the latch until we find the header.
+            for _level, (src_n, header) in backedge_levels:
+                print(f'         collecting circuit body of {_level, (src_n, header)=}')
+                worklist = [src_n]
+                seen = set(worklist)
+                while worklist:
+                    node = worklist.pop()
+                    assert fg.dominates(header, node)
+
+                    if not node in incircuit:
+                        incircuit[node] = []
+                    incircuit[node].append(header)
+                    if node != header:
+                        print("         adding unseen predecessors of", node, "to worklist:", [p for p in preds[node] if not p in seen])
+                        for prev in preds[node]:
+                            if not prev in seen:
+                                seen.add(prev)
+                                worklist.append(prev)
+
+            return incircuit
+
+        def determine_loop_scope(
+                    rg: tingly.RootedDiGraph,
+                    backedge_levels: List[Tuple[int, str, str]],
+                    loopfollows: Dict[str, Optional[str]],
+                    afterloop: Dict[str, Optional[str]]
+                ) -> Dict[str, List[str]]:
+            inscope : Dict[str, List[str]] = {}
+            succs = self.derived_graph_sequence.graphs[0].edges
+
+            header_levels = list(set((level, header) for level, (_, header) in backedge_levels))
+            headers = set(header for _, header in header_levels)
+
+            # We iterate by level to ensure that each node
+            # is associated with the innermost nested loop which contains it.
+            # Largest first, because that's the nature of syntax.
+            header_levels.sort(key=lambda tup: tup[0], reverse=True)
+
+            # The nodes in a loop's scope are found by iterating forwards from
+            # the header until we find the the follow.
+            for _level, header in header_levels:
+                other_headers = headers - {header}
+                worklist = [header]
+                seen = set(worklist)
+                print(f'         collecting scope body of {(_level, header)=}; {other_headers=}')
+
+                def process(n):
+                    if not n in seen:
+                        seen.add(n)
+                        worklist.append(n)
+
+                while worklist:
+                    node = worklist.pop()
+                    if not node in inscope:
+                        inscope[node] = []
+                    if node == afterloop[header]:
+                        continue
+                    if node in other_headers:
+                        # Ignore the body of the loop, but the follow node can be ours,
+                        # assuming it has only a single predecessor.
+                        for next in succs[node]:
+                            if next in incircuit and node in incircuit[next]:
+                                continue
+                            if len(rg.pre(next)) == 1:
+                                #assert next not in owners
+                                print(f"while determining loop scope, updating afterloop[{node}] to {next}")
+                                afterloop[node] = next
+                                process(next)
+                        continue
+
+                    print(f'             marking {node=} as part of scope of {header=}')
+                    inscope[node].append(header)
+                    for next in succs[node]:
+                        process(next)
+
+            return inscope
+
+        def classify_loop(src, header, n: int, ipostdoms) -> str:
+            print(f"loop candidate {header=} found at graph level {n=} with backedge from {src=}")
+
+            hdrlen = len(self.flowgraph.post(header))
+            latchlen = len(self.flowgraph.post(src))
+            if ipostdoms[header] == None:
+                return 'endless'
+            elif hdrlen == 2 and latchlen == 1:
+                return 'while'
+            elif hdrlen == 1 and latchlen == 2:
+                return 'do-while'
+            elif hdrlen == 1 and latchlen == 1:
+                # Probably a while-like loop, albeit with an internal goto somewhere;
+                # the fact that the postdominator exists implies that it's possible to
+                # exit the loop.
+                return 'internal-control'
+            else:
+                if hdrlen == 2 and latchlen == 2 and header == src:
+                    # Some while loops get optimized to a single self-looping node.
+                    return 'while'
+
+                return 'undetermined'
+
+        def determine_loopfollow(src, hdr, inloop, looptype) -> Optional[str]:
+            """The follow node is the one which executes on the way out of the loop.
+               The follow may be printed within the sytactic block of the loop,
+               or it may be the statement after the loop (targeted by a break).
+               The loopfollow is not owned by the loop, even when printed within it."""
+            if looptype == 'while':
+                succs = list(self.flowgraph.post(hdr))
+                assert len(succs) == 2
+                if succs[0] in inloop and inloop[succs[0]][0] == hdr:
+                    return succs[1]
+                else:
+                    return succs[0]
+            elif looptype == 'do-while':
+                succs = list(self.flowgraph.post(src))
+                assert len(succs) == 2
+                if succs[0] in inloop and inloop[succs[0]][0] == hdr:
+                    return succs[1]
+                else:
+                    return succs[0]
+            elif looptype == 'endless':
+                return None
+            elif looptype == 'internal-control':
+                return ipostdoms[hdr]
+            else:
+                return None
+
+        loopdepths, loopcandidates = initial_loop_header_identification()
+        print("loopdepths:", loopdepths)
+        print("loopcandidates:", loopcandidates)
+        backedge_levels = find_level_0_backedges(loopcandidates, loopdepths)
+        incircuit = determine_loop_circuit(backedge_levels)
+        
+        import pprint
+        print(f"incircuit:")
+        pprint.pprint(incircuit, indent=4)
+        print(f"{loopcandidates=}")
+        print(f"{backedge_levels=}")
+
+        loopsignatures = []
+        for norig, (src, hdr) in backedge_levels:
+            if hdr in incircuit and incircuit[hdr][0] != hdr:
+                print(f"           discarding loop candidate {(hdr,src,norig)=} since the header belongs to another loop ({incircuit[hdr]})")
+            elif src in incircuit and incircuit[src][0] != hdr:
+                print(f"           discarding loop candidate {(hdr,src,norig)=} since the latch belongs to another loop ({incircuit[src]})")
+            else:
+                looptype = classify_loop(src, hdr, norig, ipostdoms)
+                loopfollow = determine_loopfollow(src, hdr, incircuit, looptype)
+                loopsignatures.append( (hdr, src, looptype, loopfollow, norig) )
+
+        loopfollows = {}
+        for hdr, src, looptype, loopfollow, norig in loopsignatures:
+            loopfollows[hdr] = loopfollow
+
+        afterloop = {}
+        for hdr in loopfollows.keys():
+            pdom = ipostdoms[hdr]
+            while pdom != None and pdom in incircuit and hdr in incircuit[pdom]:
+                pdom = ipostdoms[pdom]
+            afterloop[hdr] = pdom
+        afterloop.setdefault(None)
+
+        # The afterloop node is a candidate for the sequential successor statement
+        # for the loop, but if one loop contains another, and the inner loop is the
+        # only way to reach an exit node, and there are no `break`s from the outer loop,
+        # there need be no sequential successor for the outer loop. The afterloop node
+        # should not be used, since it would be better placed within the inner loop.
+
+        inscope = determine_loop_scope(fg, backedge_levels, loopfollows, afterloop)
+        print(f"inscope:")
+        pprint.pprint(inscope, indent=4)
+
+
+        print(f"loopsignatures:")
+        pprint.pprint(loopsignatures, indent=4)
+
+        backedges = set(edge for _, edge in backedge_levels)
+        return (incircuit, inscope, backedges, loopsignatures, loopfollows, afterloop, fg, ipostdoms)
+
+    def compute_gotoedges(rg: tingly.RootedDiGraph, twowayconds: Dict[str, str], inscope):
+        gotoedges = set()
+        # Some edges into multi-predecessor nodes must become gotos.
+        # Backedges within a loop don't count; they are implicitly represented
+        # (and, if not, would be represented with `continue`s). But we might need
+        # a goto for a backedge that crosses between loops.
+        # Similarly, the join points for two-way conditionals are exempt.
+        # For the remainder, one arbitrarily chosen edge is exempt, and the others
+        # must use gotos.
+        ifjoinpoints = set(twowayconds.values())
+        print(f'{ifjoinpoints=}')
+        for tgt in rg.rpo_sorted: # outer
+            print(f'considering goto target {tgt}')
+            preds = rg.pre(tgt)
+            if len(preds) <= 1 or tgt in ifjoinpoints:
+                continue # to outer
+            print(f'{len(preds)=} for {tgt=}')
+
+            # If any predecessor is a tree edge, the others need gotos.
+            # If none are tree edges, one will be chosen arbitrarily
+            # to not need a goto.
+            exempted_one_pred = any(rg.edge_flavor(p, tgt) == 'tree' for p in preds)
+
+            for p in sorted(preds): # inner
+                edge = (p, tgt)
+                if rg.edge_flavor(p, tgt) == 'tree':
+                    print(f'tree {edge=} cannot be a goto')
+                    continue
+                if rg.edge_flavor(p, tgt) == 'back':
+                    if loop_scope_for_node_is(p, tgt, inscope):
+                        print(f"      skipping {edge=} because the pred is in the scope of the target")
+                        continue # to inner
+                    else:
+                        print(f"  not skipping {edge=} because the pred is not in the scope of the target")
+                if not exempted_one_pred:
+                    exempted_one_pred = True
+                    print(f"     exempting {edge=} from gotos because it was the first leading to the target")
+                else:
+                    print(f"     adding goto {edge=}")
+                    gotoedges.add(edge)
+        print(f"######## eventually got {gotoedges=}")
+        return gotoedges
+
+    def compute_breakedges(gotoedges: Set[Tuple[str, str]],
+                           rg: tingly.RootedDiGraph,
+                           loopheaders, afterloop, inscope, owners):
+        breakedges = set()
+        # For each loop header, the break target is the first *out of the loop*
+        # postdominating node, if it is owned by the loop header. Loops can have
+        # an afterloop node that can only be reached via gotos!
+        # Given a break target, the break edges are those *from in the loop*
+        # targeting it.
+        for hdr in loopheaders:
+            pdom = afterloop[hdr]
+            print(f"::break target for {hdr=} is {pdom=} {inscope[pdom] if pdom in inscope else None}")
+            for src in rg.edges:
+                if pdom not in rg.edges[src]:
+                    continue
+                if rg.dominates(hdr, src) and not rg.dominates(pdom, src):
+                    src_outside_hdr = src in inscope and inscope[src][0] != hdr
+                    owned_elsewhere = pdom in owners and owners[pdom][0] != hdr
+                    if (not owned_elsewhere) and not src_outside_hdr:
+                        print(f"::::adding break edge owned by {hdr=} : {(src,pdom)=}")
+                        breakedges.add( (src, pdom) )
+                    else:
+                        print(f"::::adding goto edge owned by {hdr=} : {(src,pdom)=} ;; {owned_elsewhere=} {src_outside_hdr=}")
+                        gotoedges.add( (src, pdom) )
+        return breakedges
+
+    def scope_nesting_depth(rg: tingly.RootedDiGraph, all_backedges, gotoedges, afterloop, loopheaders, twowayconds):
+        worklist = []
+        worklist.append( (rg.start_node, 0) )
+
+        depths = {node: len(rg.nodes) for node in rg.nodes}
+        owners = {}
+        seen = set()
+        while len(worklist) > 0:
+            (node, depth) = worklist.pop()
+            if node in seen:
+                continue
+
+            seen.add(node)
+            depths[node] = min(depth, depths[node])
+
+            def process(succ, depth, followdict, tag):
+                newdepth = depth
+                roots = [hdr for hdr in followdict if followdict[hdr] == succ]
+                for hdr in roots:
+                    if depths[hdr] < newdepth:
+                        newdepth = depths[hdr]
+                        owners[succ] = (hdr, tag)
+                #print(f"exploring break edge {succ=} via {node=} with newdepth {newdepth}")
+                worklist.append((succ, newdepth))
+
+            for succ in rg.post(node):
+                if (node, succ) in all_backedges:
+                    continue
+
+                if (node, succ) in gotoedges:
+                    continue
+
+                if succ in afterloop.values():
+                    process(succ, depth, afterloop, 'loop')
+                    continue
+
+                newdepth = depth
+                if node in loopheaders:
+                    newdepth += 1
+                if node in twowayconds:
+                    newdepth += 1
+
+                if succ in twowayconds.values():
+                    process(succ, newdepth, twowayconds, 'cond')
+                    continue
+
+                #print(f"exploring {succ=} via {node=} with depth {newdepth}")
+                worklist.append((succ, newdepth))
+
+        import pprint
+        print("scope nesting depths:")
+        pprint.pprint(depths, indent=4)
+
+        print("owners:")
+        pprint.pprint(owners, indent=4)
+        return owners
+
 class Cfg:
 
     def __init__(
@@ -150,265 +525,6 @@ class Cfg:
 
         return self.flowgraph.rpo_sorted
 
-    def analyze_loops(self):
-        rg = self.flowgraph
-        rrg = rg.inverse_with_phantom_exit_node()
-        ipostdoms = tingly.RootedDiGraph.ipostdoms(rrg)
-
-        def initial_loop_header_identification() -> Tuple[Dict[str, int], Set[Tuple[str, str]]]:
-            loopdepths : Dict[str, int] = {}
-            loopcandidates : Set[Tuple[str, str]] = set()
-
-            for n, gn in enumerate(self.derived_graph_sequence.graphs):
-                for header in sorted(gn.intervals.keys()):
-                    gin = gn.intervals[header]
-                    print(f'header for interval at graph level {n=} is {header=}')
-                    for src in gin.edges:
-                        for tgt in gin.edges[src]:
-                            print(' ' * n + f"considering edge {src=} -> {tgt=} at loop level {n=}")
-                            if tgt == header:
-                                assert (header not in loopdepths or loopdepths[header] == n)
-                                loopdepths[header] = n
-                                # The src node is in an interval at level n, but we're ultimately
-                                # interested in the node(s) within the equivalent interval(s) at
-                                # level 0.
-                                loopcandidates.add( (header, src) )
-            return loopdepths, loopcandidates
-
-        def expand_interval_nodes(node, level) -> List[str]:
-            return self.derived_graph_sequence.graphs[level - 1].intervals[node].nodes
-
-        def find_level_0_backedges(loopcandidates : List[Tuple[str, str]],
-                                   loopdepths : Dict[str, int]
-                                  ) -> List[Tuple[int, Tuple[str, str]]]:
-            backedge_levels : List[Tuple[int, str, str]] = []
-            for hdr, src_n in loopcandidates:
-                # The worklist contains interval nodes targeting hdr with a backedge.
-                # For interval depths > 0, we need to (recursively) peek inside the
-                # interval to find the node within it which contains the backedge.
-                worklist = [ (src_n, loopdepths[hdr], loopdepths[hdr]) ]
-                while len(worklist) > 0:
-                    (src, n, norig) = worklist.pop()
-                    if n == 0:
-                        print(f"found level-0 backedge from {src} to {hdr}")
-                        backedge_levels.append( (norig, (src, hdr)) )
-                    else:
-                        for node in expand_interval_nodes(src, n):
-                            for tgt in self.successors(node):
-                                if tgt == hdr:
-                                    print(f"found backedge at level {n-1=} from {node} to {hdr}")
-                                    worklist.append( (node, n - 1, norig) )
-            return backedge_levels
-
-        def determine_loop_circuit(
-                    backedge_levels: List[Tuple[int, str, str]]
-                ) -> Dict[str, List[str]]:
-            incircuit : Dict[str, List[str]] = {}
-            preds = self.derived_graph_sequence.graphs[0].revedges
-
-            # We iterate by level to ensure that each node
-            # is associated with the innermost nested loop which contains it.
-            backedge_levels.sort(key=lambda tup: tup[0])
-
-            # The nodes in a loop's circuit are found by iterating backwards from
-            # the latch until we find the header.
-            for _level, (src_n, header) in backedge_levels:
-                print(f'         collecting circuit body of {_level, (src_n, header)=}')
-                worklist = [src_n]
-                seen = set(worklist)
-                while worklist:
-                    node = worklist.pop()
-                    assert rg.dominates(header, node)
-
-                    if not node in incircuit:
-                        incircuit[node] = []
-                    incircuit[node].append(header)
-                    if node != header:
-                        print("         adding unseen predecessors of", node, "to worklist:", [p for p in preds[node] if not p in seen])
-                        for prev in preds[node]:
-                            if not prev in seen:
-                                seen.add(prev)
-                                worklist.append(prev)
-
-            return incircuit
-
-        def determine_loop_scope(
-                    rg: tingly.RootedDiGraph,
-                    backedge_levels: List[Tuple[int, str, str]],
-                    loopfollows: Dict[str, Optional[str]],
-                    afterloop: Dict[str, Optional[str]]
-                ) -> Dict[str, List[str]]:
-            inscope : Dict[str, List[str]] = {}
-            succs = self.derived_graph_sequence.graphs[0].edges
-
-            header_levels = list(set((level, header) for level, (_, header) in backedge_levels))
-            headers = set(header for _, header in header_levels)
-
-            # We iterate by level to ensure that each node
-            # is associated with the innermost nested loop which contains it.
-            # Largest first, because that's the nature of syntax.
-            header_levels.sort(key=lambda tup: tup[0], reverse=True)
-
-            # The nodes in a loop's scope are found by iterating forwards from
-            # the header until we find the the follow.
-            for _level, header in header_levels:
-                other_headers = headers - {header}
-                worklist = [header]
-                seen = set(worklist)
-                print(f'         collecting scope body of {(_level, header)=}; {other_headers=}')
-
-                def process(n):
-                    if not n in seen:
-                        seen.add(n)
-                        worklist.append(n)
-
-                while worklist:
-                    node = worklist.pop()
-                    if not node in inscope:
-                        inscope[node] = []
-                    if node == afterloop[header]:
-                        continue
-                    if node in other_headers:
-                        # Ignore the body of the loop, but the follow node can be ours,
-                        # assuming it has only a single predecessor.
-                        for next in succs[node]:
-                            if next in incircuit and node in incircuit[next]:
-                                continue
-                            if len(rg.pre(next)) == 1:
-                                #assert next not in owners
-                                print(f"while determining loop scope, updating afterloop[{node}] to {next}")
-                                afterloop[node] = next
-                                process(next)
-                        continue
-
-                    print(f'             marking {node=} as part of scope of {header=}')
-                    inscope[node].append(header)
-                    for next in succs[node]:
-                        process(next)
-
-            return inscope
-
-        def classify_loop(src, header, n: int, ipostdoms) -> str:
-            print(f"loop candidate {header=} found at graph level {n=} with backedge from {src=}")
-
-            hdrlen = len(self.successors(header))
-            latchlen = len(self.successors(src))
-            if ipostdoms[header] == None:
-                return 'endless'
-            elif hdrlen == 2 and latchlen == 1:
-                return 'while'
-            elif hdrlen == 1 and latchlen == 2:
-                return 'do-while'
-            elif hdrlen == 1 and latchlen == 1:
-                # Probably a while-like loop, albeit with an internal goto somewhere;
-                # the fact that the postdominator exists implies that it's possible to
-                # exit the loop.
-                return 'internal-control'
-            else:
-                if hdrlen == 2 and latchlen == 2 and header == src:
-                    # Some while loops get optimized to a single self-looping node.
-                    return 'while'
-
-                return 'undetermined'
-
-        def determine_loopfollow(src, hdr, inloop, looptype) -> Optional[str]:
-            """The follow node is the one which executes on the way out of the loop.
-               The follow may be printed within the sytactic block of the loop,
-               or it may be the statement after the loop (targeted by a break).
-               The loopfollow is not owned by the loop, even when printed within it."""
-            if looptype == 'while':
-                succs = self.successors(hdr)
-                assert len(succs) == 2
-                if succs[0] in inloop and inloop[succs[0]][0] == hdr:
-                    return succs[1]
-                else:
-                    return succs[0]
-            elif looptype == 'do-while':
-                succs = self.successors(src)
-                assert len(succs) == 2
-                if succs[0] in inloop and inloop[succs[0]][0] == hdr:
-                    return succs[1]
-                else:
-                    return succs[0]
-            elif looptype == 'endless':
-                return None
-            elif looptype == 'internal-control':
-                return ipostdoms[hdr]
-            else:
-                return None
-
-        loopdepths, loopcandidates = initial_loop_header_identification()
-        backedge_levels = find_level_0_backedges(loopcandidates, loopdepths)
-        incircuit = determine_loop_circuit(backedge_levels)
-        
-        import pprint
-        print(f"incircuit:")
-        pprint.pprint(incircuit, indent=4)
-        print(f"{loopcandidates=}")
-        print(f"{backedge_levels=}")
-
-        loopsignatures = []
-        for norig, (src, hdr) in backedge_levels:
-            if hdr in incircuit and incircuit[hdr][0] != hdr:
-                print(f"           discarding loop candidate {(hdr,src,norig)=} since the header belongs to another loop ({incircuit[hdr]})")
-            elif src in incircuit and incircuit[src][0] != hdr:
-                print(f"           discarding loop candidate {(hdr,src,norig)=} since the latch belongs to another loop ({incircuit[src]})")
-            else:
-                looptype = classify_loop(src, hdr, norig, ipostdoms)
-                loopfollow = determine_loopfollow(src, hdr, incircuit, looptype)
-                loopsignatures.append( (hdr, src, looptype, loopfollow, norig) )
-
-        sigs_by_hdr = {}
-        for hdr, src, looptype, loopfollow, norig in loopsignatures:
-            if not hdr in sigs_by_hdr:
-                sigs_by_hdr[hdr] = []
-            sigs_by_hdr[hdr].append( (src, looptype, loopfollow, norig) )
-
-        print(f"sigs_by_hdr:")
-        pprint.pprint(sigs_by_hdr, indent=4)
-        # for hdr in sigs_by_hdr:
-        #     looptypes = set(looptype for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])
-        #     assert len(looptypes) == 1, f"{hdr} => {looptypes=}"
-        #     assert len(set(loopfollow for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])) == 1
-        #     assert len(set(norig for (src, looptype, loopfollow, norig) in sigs_by_hdr[hdr])) == 1
-
-        
-        loopfollows = {}
-        for hdr, src, looptype, loopfollow, norig in loopsignatures:
-            loopfollows[hdr] = loopfollow
-
-        afterloop = {}
-        for hdr in loopfollows.keys():
-            pdom = ipostdoms[hdr]
-            while pdom != None and pdom in incircuit and hdr in incircuit[pdom]:
-                pdom = ipostdoms[pdom]
-            afterloop[hdr] = pdom
-        afterloop.setdefault(None)
-
-        # The afterloop node is a candidate for the sequential successor statement
-        # for the loop, but if one loop contains another, and the inner loop is the
-        # only way to reach an exit node, and there are no `break`s from the outer loop,
-        # there need be no sequential successor for the outer loop. The afterloop node
-        # should not be used, since it would be better placed within the inner loop.
-
-        inscope = determine_loop_scope(rg, backedge_levels, loopfollows, afterloop)
-        print(f"inscope:")
-        pprint.pprint(inscope, indent=4)
-
-
-        print(f"loopsignatures:")
-        pprint.pprint(loopsignatures, indent=4)
-
-        backedges = set(edge for _, edge in backedge_levels)
-        return (incircuit, inscope, backedges, loopsignatures, loopfollows, afterloop, rg, ipostdoms)
-
-    def is_returning(self, stmt: AST.ASTStmt) -> bool:
-        if isinstance(stmt, AST.ASTReturn):
-            return True
-        if isinstance(stmt, AST.ASTBlock):
-            return self.is_returning(stmt.stmts[-1])
-        return False
-
     def stmt_ast(
             self,
             fn: "Function",
@@ -424,11 +540,9 @@ class Cfg:
             c = sep.join(str(pp.ccode).split("\n"))
             print(f'{id} ==>{sep}{c}')
 
-        incircuit, inscope, all_backedges, loopsignatures, loopfollows, afterloop, rg, ipostdoms = self.analyze_loops()
+        la = LoopAnalysis(self.flowgraph, self.derived_graph_sequence)
+        incircuit, inscope, all_backedges, loopsignatures, loopfollows, afterloop, rg, ipostdoms = la.analyze_loops()
         
-        def loop_scope_for_node_is(n: str, tgt: str) -> bool:
-            return n in inscope and len(inscope[n]) > 0 and inscope[n][0] == tgt
-
         idoms = rg.idoms
 
         import pprint
@@ -453,148 +567,24 @@ class Cfg:
         print(f'twowayconds:')
         pprint.pprint(twowayconds, indent=4)
 
-        gotoedges = set()
-        # Some edges into multi-predecessor nodes must become gotos.
-        # Backedges within a loop don't count; they are implicitly represented
-        # (and, if not, would be represented with `continue`s). But we might need
-        # a goto for a backedge that crosses between loops.
-        # Similarly, the join points for two-way conditionals are exempt.
-        # For the remainder, one arbitrarily chosen edge is exempt, and the others
-        # must use gotos.
-        ifjoinpoints = set(twowayconds.values())
-        print(f'{ifjoinpoints=}')
-        for tgt in rg.rpo_sorted: # outer
-            print(f'considering goto target {tgt}')
-            preds = rg.pre(tgt)
-            if len(preds) <= 1 or tgt in ifjoinpoints:
-                continue # to outer
-            print(f'{len(preds)=} for {tgt=}')
-
-            # If any predecessor is a tree edge, the others need gotos.
-            # If none are tree edges, one will be chosen arbitrarily
-            # to not need a goto.
-            exempted_one_pred = any(rg.edge_flavor(p, tgt) == 'tree' for p in preds)
-
-            for p in sorted(preds): # inner
-                edge = (p, tgt)
-                if rg.edge_flavor(p, tgt) == 'tree':
-                    print(f'tree {edge=} cannot be a goto')
-                    continue
-                if edge in all_backedges:
-                    if loop_scope_for_node_is(p, tgt):
-                        print(f"      skipping {edge=} because the pred is in the scope of the target")
-                        continue # to inner
-                    else:
-                        print(f"  not skipping {edge=} because the pred is not in the scope of the target")
-                if not exempted_one_pred:
-                    exempted_one_pred = True
-                    print(f"     exempting {edge=} from gotos because it was the first leading to the target")
-                else:
-                    print(f"     adding goto {edge=}")
-                    gotoedges.add(edge)
-        print(f"######## eventually got {gotoedges=}")
-
+        gotoedges = LoopAnalysis.compute_gotoedges(self.flowgraph, twowayconds, inscope)
         non_goto_backedges = all_backedges - gotoedges
 
         # Pre-generate a conservative approximation of the labels that might be used;
         # when a goto is emitted, make sure the label it targets actually gets printed.
-        #cross_edges = set(e for e, flavor in rg._edge_flavors.items() if flavor == 'cross')
-        #labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for _, tgt in gotoedges | cross_edges }
         labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for tgt in rg.rpo_sorted }
 
-        def scope_nesting_depth():
-            worklist = []
-            worklist.append( (rg.start_node, 0) )
-
-            depths = {node: len(rg.nodes) for node in rg.nodes}
-            owners = {}
-            seen = set()
-            while len(worklist) > 0:
-                (node, depth) = worklist.pop()
-                if node in seen:
-                    continue
-
-                seen.add(node)
-                depths[node] = min(depth, depths[node])
-
-                def process(succ, depth, followdict, tag):
-                    newdepth = depth
-                    roots = [hdr for hdr in followdict if followdict[hdr] == succ]
-                    for hdr in roots:
-                        if depths[hdr] < newdepth:
-                            newdepth = depths[hdr]
-                            owners[succ] = (hdr, tag)
-                    #print(f"exploring break edge {succ=} via {node=} with newdepth {newdepth}")
-                    worklist.append((succ, newdepth))
-
-                for succ in self.successors(node):
-                    if (node, succ) in all_backedges:
-                        continue
-
-                    if (node, succ) in gotoedges:
-                        continue
-
-                    if succ in afterloop.values():
-                        process(succ, depth, afterloop, 'loop')
-                        continue
-
-                    newdepth = depth
-                    if node in loopheaders:
-                        newdepth += 1
-                    if node in twowayconds:
-                        newdepth += 1
-
-                    if succ in twowayconds.values():
-                        process(succ, newdepth, twowayconds, 'cond')
-                        continue
-
-                    #print(f"exploring {succ=} via {node=} with depth {newdepth}")
-                    worklist.append((succ, newdepth))
-
-            print("scope nesting depths:")
-            pprint.pprint(depths, indent=4)
-
-            print("owners:")
-            pprint.pprint(owners, indent=4)
-            return owners
-
-        owners = scope_nesting_depth()
+        owners = LoopAnalysis.scope_nesting_depth(rg, all_backedges, gotoedges, afterloop, loopheaders, twowayconds)
         
-        breakedges = set()
-        # For each loop header, the break target is the first *out of the loop*
-        # postdominating node, if it is owned by the loop header. Loops can have
-        # an afterloop node that can only be reached via gotos!
-        # Given a break target, the break edges are those *from in the loop*
-        # targeting it.
-        for hdr in loopheaders:
-            pdom = afterloop[hdr]
-            print(f"::break target for {hdr=} is {pdom=} {inscope[pdom] if pdom in inscope else None}")
-            for src in rg.edges:
-                if pdom not in rg.edges[src]:
-                    continue
-                if rg.dominates(hdr, src) and not rg.dominates(pdom, src):
-                    src_outside_hdr = src in inscope and inscope[src][0] != hdr
-                    owned_elsewhere = pdom in owners and owners[pdom][0] != hdr
-                    if (not owned_elsewhere) and not src_outside_hdr:
-                        print(f"::::adding break edge owned by {hdr=} : {(src,pdom)=}")
-                        breakedges.add( (src, pdom) )
-                    else:
-                        print(f"::::adding goto edge owned by {hdr=} : {(src,pdom)=} ;; {owned_elsewhere=} {src_outside_hdr=}")
-                        gotoedges.add( (src, pdom) )
+        # mutates gotoedges
+        breakedges = LoopAnalysis.compute_breakedges(gotoedges, rg, loopheaders, afterloop, inscope, owners)
 
         def emit(n: str) -> List[AST.ASTStmt]:
+            """Produces the AST for a block, preceded by a label (which may not get printed)."""
             if n not in blockstmts:
-                if n in labeled_stmts:
-                    return [labeled_stmts[n]]
-                #return [astree.mk_label_stmt("NoBlock_" + n)]
-                return []
+                return [labeled_stmts[n]]
 
-            if n in labeled_stmts:
-                return [labeled_stmts[n], blockstmts[n]]
-
-            s = astree.mk_label_stmt("__" + n)
-            s._printed = True
-            return [s, blockstmts[n]]
+            return [labeled_stmts[n], blockstmts[n]]
 
         constructed_stmts = set()
         def construct(
@@ -602,7 +592,8 @@ class Cfg:
                 follow: Optional[str],
                 loopheader: Optional[str],
                 result: List[AST.ASTStmt]) -> AST.ASTStmt:
-            # `follow` is a marker indicating the join point of an `if` branch.
+            # When processing the two arms of a conditional branch,
+            # `follow` indicates the join point, i.e. where the arms end.
 
             def possible_loop_latch_branch(succ, follownode) -> AST.ASTStmt:
                 if (n, succ) in non_goto_backedges:
@@ -623,12 +614,10 @@ class Cfg:
                 return construct(succ, follownode, loopheader, [])
 
             print(f"construct({n=}, {follow=}, {loopheader=})")
+
             if follow and n == follow:
                 print(f"stopping at {follow=} and returning what's been collected so far")
                 return astree.mk_block(result)
-
-            #if follow and:
-            #    return astree.mk_block(result)
 
             if n in constructed_stmts:
                 print(f"###########################  already constructed {n=}; emitting an unexpected goto")
@@ -640,9 +629,8 @@ class Cfg:
             if len(self.successors(n)) == 0:
                 return astree.mk_block(result + emit(n))
 
-            if loop_scope_for_node_is(n, n) and loopheader != n:
-                # Loop headers are those for which `inloop[n][0] == n`.
-                # When we encounter it the first time, we recur with
+            if loop_scope_for_node_is(n, n, inscope) and loopheader != n:
+                # When we encounter a loop header for the first time, we recur with
                 # a new `loopheader` flag so that we don't infinitely recurse.
                 follownode = afterloop[n]
                 print(f"LOOP LOOP LOOP LOOP LOOP encountered loop header node {n=}, {len(result)=}")
