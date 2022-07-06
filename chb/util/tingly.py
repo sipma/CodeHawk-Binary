@@ -16,7 +16,7 @@ class RootedDiGraph:
         self._revedges: Dict[str, List[str]] = {}
         self._twowayconditionals: Dict[str, str] = {} # follow nodes
         self._idoms: Dict[UserNodeID, Optional[UserNodeID]] = {n:None for n in nodes} # immediate dominator
-        
+
         self._compute_dfs() # First DFS computes the reverse postorder list.
         self._compute_dfs() # DFS in RPO order can produce fewer cross edges.
         self._compute_doms()
@@ -120,22 +120,9 @@ class RootedDiGraph:
         return RootedDiGraph(self.nodes + [phantomend], augedges, phantomend)
 
     def ipostdoms(rrg: 'RootedDiGraph') -> Dict[UserNodeID, Set[UserNodeID]]:
-        if True:
-            import chb.util.dotutil as UD
-            from chb.util.DotGraph import DotGraph
-
-            dotgraph = DotGraph("rrg")
-            for n in rrg.nodes:
-                dotgraph.add_node(n, labeltxt=str(n))
-
-            for src in rrg.edges:
-                for tgt in rrg.edges[src]:
-                    dotgraph.add_edge(src, tgt)
-
-            UD.print_dot("/home/ben/", "rrg", dotgraph)
-        #print(rrg.nodes)
-        #print(rrg.edges)
-        idoms = rrg.idoms
+        idoms = dict(rrg.idoms)
+        # The start node of the reverse graph is a phantom node that doesn't
+        # exist in the original graph.
         del idoms[rrg.start_node]
         return idoms
             
