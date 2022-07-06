@@ -186,7 +186,7 @@ class RootedDiGraph:
 
     def idom(self, node: UserNodeID) -> Optional[UserNodeID]:
         """
-        Returns the immediate dominator of node.
+        Returns the immediate dominator of the given node.
         """
         return self._idoms[node]
 
@@ -264,8 +264,10 @@ class RootedDiGraph:
 
         if len(self._twowayconditionals) == 0:
             for m in reversed(self._rpo_sorted):
+                # Cifuentes skips nodes marked as loop headers, since she integrates
+                # the conditional directly into the loop construct, but we keep them
+                # separate, and so do not skip loop headers.
                 if (    len(self.post(m)) == 2   # 2-way conditional
-                        #and not m in loopheaders  # not a loop header
                         and not m in latchingnodes):  # not a latching node
                     follow = find_follow(m)
                     print(f"   _twowayconditionals:     {m=} {follow=}")
