@@ -71,6 +71,7 @@ class Cfg:
         self.xnode = xnode
         self._edges: Dict[str, List[str]] = {}
         self._graphseq: Optional[DerivedGraphSequence] = None
+        self._flowgraph: Optional[tingly.RootedDiGraph] = None
 
     @property
     def faddr(self) -> str:
@@ -136,18 +137,21 @@ class Cfg:
         return self.derived_graph_sequence.is_reducible
 
     @property
+    def flowgraph(self) -> tingly.RootedDiGraph:
+        if self._flowgraph is None:
+            self._flowgraph = tingly.RootedDiGraph(self.derived_graph_sequence.nodes,
+                                    self.derived_graph_sequence.edges,
+                                    self.derived_graph_sequence.graphs[0].nodes[0])
+        return self._flowgraph
+
+    @property
     def rpo_sorted_nodes(self) -> List[str]:
         """Return a list of block addresses in reverse postorder."""
 
-        if self.is_reducible:
-            return self.derived_graph_sequence.rpo_sorted_nodes
-        else:
-            return []
+        return self.flowgraph.rpo_sorted
 
     def analyze_loops(self):
-        rg = tingly.RootedDiGraph(self.derived_graph_sequence.nodes,
-                                    self.derived_graph_sequence.edges,
-                                    self.derived_graph_sequence.graphs[0].nodes[0])
+        rg = self.flowgraph
         rrg = rg.inverse_with_phantom_exit_node()
         ipostdoms = tingly.RootedDiGraph.ipostdoms(rrg)
 
