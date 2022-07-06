@@ -156,7 +156,8 @@ class Cfg:
             loopcandidates : Set[Tuple[str, str]] = set()
 
             for n, gn in enumerate(self.derived_graph_sequence.graphs):
-                for header, gin in gn.intervals.items():
+                for header in sorted(gn.intervals.keys()):
+                    gin = gn.intervals[header]
                     print(f'header for interval at graph level {n=} is {header=}')
                     for src in gin.edges:
                         for tgt in gin.edges[src]:
@@ -470,22 +471,22 @@ class Cfg:
             # to not need a goto.
             exempted_one_pred = any(rg.edge_flavor(p, tgt) == 'tree' for p in preds)
 
-            for p in preds: # inner
+            for p in sorted(preds): # inner
                 edge = (p, tgt)
                 if rg.edge_flavor(p, tgt) == 'tree':
                     print(f'tree {edge=} cannot be a goto')
                     continue
                 if edge in all_backedges:
                     if loop_scope_for_node_is(p, tgt):
-                        print(f"      skipping edge {edge=} because the pred is in the scope of the target")
+                        print(f"      skipping {edge=} because the pred is in the scope of the target")
                         continue # to inner
                     else:
-                        print(f"  not skipping edge {edge=} because the pred is not in the scope of the target")
+                        print(f"  not skipping {edge=} because the pred is not in the scope of the target")
                 if not exempted_one_pred:
                     exempted_one_pred = True
-                    print(f"     exempting edge {edge=} from gotos because it was the first leading to the target")
+                    print(f"     exempting {edge=} from gotos because it was the first leading to the target")
                 else:
-                    print(f"     adding goto edge {edge=}")
+                    print(f"     adding goto {edge=}")
                     gotoedges.add(edge)
         print(f"######## eventually got {gotoedges=}")
 

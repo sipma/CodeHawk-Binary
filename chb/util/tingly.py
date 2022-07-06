@@ -38,7 +38,8 @@ class RootedDiGraph:
             starttime[node] = vtime
             vtime += 1
 
-            successors = self.post(node)
+            # Set iteration order is nondeterministic, so we must sort to ensure determinism.
+            successors = sorted(self.post(node))
             if len(prev_rpo) > 0:
                 succ_idxs = sorted(prev_rpo.index(x) for x in successors)
                 successors = [prev_rpo[i] for i in succ_idxs]
@@ -271,7 +272,7 @@ class RootedDiGraph:
                     if follow is not None:
                         self._twowayconditionals[m] = follow
                         toberemoved: List[str] = []
-                        for k in unresolved:
+                        for k in sorted(unresolved):
                             if is_descendant(follow, k):
                                 print(f"   _twowayconditionals updating {k=} as descendent to have {follow=} from {m=}")
                                 self._twowayconditionals[k] = follow
