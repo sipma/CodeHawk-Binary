@@ -257,13 +257,13 @@ class RootedDiGraph:
                 if (    len(self.post(m)) == 2   # 2-way conditional
                         and not m in latchingnodes):  # not a latching node
                     follow = find_follow(m)
-                    print(f"   _twowayconditionals:     {m=} {follow=}")
+                    # print(f"   _twowayconditionals:     {m=} {follow=}")
                     if follow is not None:
                         self._twowayconditionals[m] = follow
                         toberemoved: List[str] = []
                         for k in sorted(unresolved):
                             if is_descendant(follow, k):
-                                print(f"   _twowayconditionals updating {k=} as descendent to have {follow=} from {m=}")
+                                # print(f"   _twowayconditionals updating {k=} as descendent to have {follow=} from {m=}")
                                 self._twowayconditionals[k] = follow
                                 toberemoved.append(k)
                         for k in toberemoved:
