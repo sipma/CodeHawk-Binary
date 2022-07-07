@@ -232,9 +232,8 @@ class ASTCPrettyPrinter(ASTVisitor):
         self.ccode.write("goto " + stmt._label + ";")
 
     def visit_label_stmt(self, stmt: AST.ASTLabel) -> None:
-        if stmt._printed:
-            self.ccode.newline(indent=self.indent)
-            self.ccode.write(stmt._label + ":")
+        self.ccode.newline(indent=self.indent)
+        self.ccode.write(stmt._label + ":")
 
     def visit_block_stmt(self, stmt: AST.ASTBlock) -> None:
         for s in stmt.stmts:

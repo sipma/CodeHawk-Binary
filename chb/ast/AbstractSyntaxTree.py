@@ -192,11 +192,10 @@ class AbstractSyntaxTree:
     def mk_label_stmt(
             self,
             label: str,
-            printed: bool = False,
             opt_assembly_xref: Optional[int] = None) -> AST.ASTBreakOrContinue:
         assembly_xref = (
             self.new_xref() if opt_assembly_xref is None else opt_assembly_xref)
-        return AST.ASTLabel(assembly_xref, label, printed)
+        return AST.ASTLabel(assembly_xref, label)
 
     def mk_return_stmt(
             self,

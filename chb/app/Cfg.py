@@ -535,22 +535,20 @@ class Cfg:
         gotoedges = LoopAnalysis.compute_gotoedges(self.flowgraph, twowayconds, inscope)
         non_goto_backedges = all_backedges - gotoedges
 
-        # Pre-generate a conservative approximation of the labels that might be used;
-        # when a goto is emitted, make sure the label it targets actually gets printed.
-        labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for tgt in self.flowgraph.rpo_sorted }
-
         owners = LoopAnalysis.scope_nesting_depth(self.flowgraph, all_backedges, gotoedges, afterloop, loopheaders, twowayconds)
         
         # mutates gotoedges
         breakedges = LoopAnalysis.compute_breakedges(gotoedges, self.flowgraph, loopheaders, afterloop, inscope, owners)
 
+        # Pre-generate a conservative approximation of the labels that might be used;
+        # when a goto is emitted, make sure the label it targets actually gets printed.
+        labeled_stmts = { tgt: astree.mk_label_stmt(tgt) for _, tgt in gotoedges }
 
         def emit(n: str) -> List[AST.ASTStmt]:
-            """Produces the AST for a block, preceded by a label (which may not get printed)."""
-            if n not in blockstmts:
-                return [labeled_stmts[n]]
-
-            return [labeled_stmts[n], blockstmts[n]]
+            """Produces the AST for a block, preceded by a label if applicable."""
+            prefix = [labeled_stmts[n]] if n in labeled_stmts else []
+            suffix = [blockstmts[n]] if n in blockstmts else []
+            return prefix + suffix
 
         constructed_stmts = set()
         def construct(
@@ -602,7 +600,6 @@ class Cfg:
                     return astree.mk_break_stmt()
 
                 if (n, succ) in gotoedges:
-                    labeled_stmts[succ]._printed = True
                     return astree.mk_goto_stmt(succ)
 
                 return None
