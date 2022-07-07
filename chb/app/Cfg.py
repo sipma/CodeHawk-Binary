@@ -64,6 +64,43 @@ if TYPE_CHECKING:
 def loop_scope_for_node_is(n: str, tgt: str, inscope) -> bool:
     return n in inscope and len(inscope[n]) > 0 and inscope[n][0] == tgt
 
+
+def normalized_branch(astree: ASTInterface,
+                      fn: "Function",
+                      n: str,
+                      pcoffset: int,
+                      ifbranch: AST.ASTStmt,
+                      elsebranch: AST.ASTStmt) -> AST.ASTBranch:
+    def cast_binop(condition: Optional[AST.ASTExpr]) -> Optional[AST.ASTBinaryOp]:
+        if condition is None or not condition.is_ast_binary_op:
+            return None
+        return cast(AST.ASTBinaryOp, condition)
+
+    def inverted_binop(condition: Optional[AST.ASTExpr]) -> Optional[AST.ASTBinaryOp]:
+        cond = cast_binop(condition)
+        if cond is not None:
+            invert = {"ne": "eq", "eq": "ne",
+                      "lt": "ge", "ge": "lt",
+                      "gt": "le", "le": "gt"}
+            if cond.op not in ["lor", "land"]:
+                return astree.mk_binary_expression(invert[cond.op], cond.exp1, cond.exp2)
+        return None
+
+    def swapped(condition):
+        return astree.mk_branch(condition, elsebranch, ifbranch, pcoffset)
+
+    condition = fn.blocks[n].assembly_ast_condition(astree)
+    couqitiou = inverted_binop(condition)
+    if couqitiou is not None:
+        inverting_eliminates_negation = couqitiou.op == "eq"
+        if ifbranch.is_empty() or (inverting_eliminates_negation and not elsebranch.is_empty()):
+            return swapped(couqitiou)
+    
+    if ifbranch.is_empty():
+        return swapped(fn.blocks[n].assembly_ast_condition(astree, reverse=True))
+
+    return astree.mk_branch(condition, ifbranch, elsebranch, pcoffset)
+
 class LoopAnalysis:
     def __init__(self, dgs: DerivedGraphSequence):
         self.derived_graph_sequence = dgs
@@ -683,31 +720,8 @@ class Cfg:
                 falside = self.successors(n)[0]
                 ifbranch = possible_loop_latch_branch(truside, follownode)
                 elsebranch = possible_loop_latch_branch(falside, follownode)
-
                 pcoffset = ( (int(truside, 16) - int(falside, 16)) - 2)
-                if ifbranch.is_empty():
-                    condition = fn.blocks[n].assembly_ast_condition(
-                        astree, reverse=True)
-                    bstmt = astree.mk_branch(
-                        condition, elsebranch, ifbranch, pcoffset)
-                else:
-                    condition = fn.blocks[n].assembly_ast_condition(astree)
-                    if (
-                            (not elsebranch.is_empty())
-                            and condition
-                            and condition.is_ast_binary_op):
-                        cond = cast(AST.ASTBinaryOp, condition)
-                        if cond.op in ["neq", "ne"]:
-                            condition = astree.mk_binary_expression(
-                                "eq", cond.exp1, cond.exp2)
-                            bstmt = astree.mk_branch(
-                                condition, elsebranch, ifbranch, pcoffset)
-                        else:
-                            bstmt = astree.mk_branch(
-                                condition, ifbranch, elsebranch, pcoffset)
-                    else:
-                        bstmt = astree.mk_branch(
-                            condition, ifbranch, elsebranch, pcoffset)
+                bstmt = normalized_branch(astree, fn, n, pcoffset, ifbranch, elsebranch)
                 branchinstr = fn.blocks[n].last_instruction
                 astree.add_instruction_span(
                     bstmt.assembly_xref, branchinstr.iaddr, branchinstr.bytestring)
