@@ -632,24 +632,6 @@ class Cfg:
             # When processing the two arms of a conditional branch,
             # `follow` indicates the join point, i.e. where the arms end.
 
-            def possible_loop_latch_branch(succ, newfollownode) -> AST.ASTStmt:
-                if (n, succ) in non_goto_backedges:
-                    # don't infinitely recurse!
-                    return astree.mk_block([])
-
-                if (n, succ) in breakedges:
-                        print(f"emitting break in loop at edge {n=}->{succ=}  {loopheader=}")
-                        print(f"    {inscope[n] if n in inscope else None=}")
-                        print(f"    {inscope[succ] if succ in inscope else None=}")
-                        return astree.mk_break_stmt()
-
-                if (n, succ) in gotoedges:
-                    print(f"emitting goto in loop at edge {n=} {succ=} {loopheader=}")
-                    labeled_stmts[succ]._printed = True
-                    return astree.mk_goto_stmt(succ)
-
-                return construct(succ, newfollownode, loopheader, [])
-
             print(f"construct({n=}, {follow=}, {loopheader=})")
 
             if follow and n == follow:
@@ -687,31 +669,36 @@ class Cfg:
                     return loop
                 return astree.mk_block(result + [loop])
 
+            def stmt_for_edge(succ, implicit_continue=False):
+                if (n, succ) in non_goto_backedges:
+                    if implicit_continue:
+                        # don't infinitely recurse!
+                        return astree.mk_block([])
+                    return astree.mk_continue_stmt()
+
+                if (n, succ) in breakedges:
+                    return astree.mk_break_stmt()
+
+                if (n, succ) in gotoedges:
+                    labeled_stmts[succ]._printed = True
+                    return astree.mk_goto_stmt(succ)
+
+                return None
+
             if len(self.successors(n)) == 1:
                 next = self.successors(n)[0]
-                if (n, next) in non_goto_backedges:
-                    if loopheader == next:
-                        print(f"ending construct early at {n=} {next=} due to backedge...")
-                    else:
-                        print(f"ending construct early (different loopheader) at {n=} {next=} due to backedge...")
-                    return astree.mk_block(result + emit(n) + [astree.mk_continue_stmt()])
-                    #return astree.mk_block(result + emit(n))
-
-                if (n, next) in breakedges:
-                        print(f"emitting break at edge {n=}->{next=}  {loopheader=}")
-                        print(f"    {inscope[n] if n in inscope else None=}")
-                        print(f"    {inscope[next] if next in inscope else None=}")
-                        return astree.mk_block(result + emit(n) + [astree.mk_break_stmt()])
-
-                if (n, next) in gotoedges:
-                    print(f"ending construct early at {n=} due to goto {next=}...")
-                    labeled_stmts[next]._printed = True
-                    return astree.mk_block(result + emit(n) + [astree.mk_goto_stmt(next)])  
-
-                print((n,next), 'was not in gotoedges')
+                edgestmt = stmt_for_edge(next)
+                if edgestmt is not None:
+                    return astree.mk_block(result + emit(n) + [edgestmt])
                 return construct(next, follow, loopheader, result + emit(n))
 
-            elif len(self.successors(n)) == 2:
+            def possible_loop_latch_branch(succ, newfollownode) -> AST.ASTStmt:
+                edgestmt = stmt_for_edge(succ, implicit_continue=True)
+                if edgestmt is not None:
+                    return edgestmt
+                return construct(succ, newfollownode, loopheader, [])
+
+            if len(self.successors(n)) == 2:
                 if n in twowayconds:
                     follownode: Optional[str] = twowayconds[n]
                 else:
