@@ -421,7 +421,7 @@ class DerivedGraphSequence:
         """Return hierarchical reverse postorder on all nodes."""
 
         prevrpo: Dict[str, List[int]] = {}
-        if self.graphs[-1].size == 1:
+        if self.is_reducible:
             header = self.graphs[-1].nodes[0]
             prevrpo = {header: [0]}
             for g in self.graphs[:-1][::-1]:
@@ -445,12 +445,11 @@ class DerivedGraphSequence:
             self._graphs.append(g)
 
     def to_dot(self, path: str, out: str):
-        rpo = self.graphs[-1].size == 1
         for (i, g) in enumerate(self.graphs):
             pdffilename = UD.print_dot(
                 path,
                 out + str(i+1),
-                g.to_dot("G" + str(i+1), rpo=self.hrpo, showintervals=True))
+                g.to_dot("G" + str(i+1), rpo=self.hrpo, showintervals=self.is_reducible))
             print(pdffilename)
 
     def __str__(self) -> str:
