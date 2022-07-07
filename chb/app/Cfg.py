@@ -603,9 +603,7 @@ class Cfg:
                 return astree.mk_block(result)
 
             if n in constructed_stmts:
-                #print(f"###########################  already constructed {n=}; emitting an unexpected goto")
-                labeled_stmts[n]._printed = True
-                return astree.mk_block(result + [astree.mk_goto_stmt(n)])
+                assert False, "missed a goto edge somewhere, visited node twice: " + n
             else:
                 constructed_stmts.add(n)
 
