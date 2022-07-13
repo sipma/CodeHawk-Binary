@@ -91,7 +91,7 @@ class ASTApplicationInterface:
         fndata["ast"] = {}
         fndata["ast"]["nodes"] = astnodes
         fndata["ast"]["ast-startnode"] = ast_startindex
-        fndata["ast"]["cfg-ast-stargnode"] = cfg_startindex
+        fndata["ast"]["cfg-ast-startnode"] = cfg_startindex
         fndata["spans"] = astree.spans
         fndata["available-expressions"] = {}
 

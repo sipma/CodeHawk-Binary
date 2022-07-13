@@ -34,7 +34,7 @@ syntax tree. They are organized in a hierarchy as follows:
   - *ASTBlock*: sequence of control flow statements
   - *ASTInstrSequence*: sequence of instructions (basic block)
   - *ASTBranch*: if-then-else branch statement
-  - *ASTSwitch*: swith statement
+  - *ASTSwitch*: switch statement
   - *ASTGoto*: goto statement
 - **ASTStmtLabel**:
   - *ASTLabel*: label for goto destination statements
