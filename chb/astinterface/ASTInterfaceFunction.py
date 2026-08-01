@@ -40,6 +40,7 @@ from chb.ast.CustomASTSupport import CustomASTSupport
 
 from chb.astinterface.ASTICodeTransformer import ASTICodeTransformer
 from chb.astinterface.ASTICPrettyPrinter import ASTICPrettyPrinter
+from chb.astinterface.ASTILiveness import ASTILiveness
 from chb.astinterface.ASTInterface import ASTInterface
 from chb.astinterface.ASTInterfaceBasicBlock import ASTInterfaceBasicBlock
 from chb.astinterface.ASTInterfaceInstruction import ASTInterfaceInstruction
@@ -162,6 +163,7 @@ class ASTInterfaceFunction(ASTFunction):
 
         # transfer provenance data to the AST abstract syntaxtree
         self.astinterface.set_ast_provenance()
+        self.set_flag_liveness()
         self.set_invariants()
         self.set_return_sequences()
 
@@ -248,6 +250,17 @@ class ASTInterfaceFunction(ASTFunction):
                 for hl_instr in subsumerinstr.hl_ast_instructions:
                     for ll_instr in instr.ll_ast_instructions:
                         self.astinterface.add_instr_mapping(hl_instr, ll_instr)
+
+    def set_flag_liveness(self) -> None:
+        # Derive address-keyed NZCV flag liveness from the reaching-def facts
+        # and attach it to the provenance. This is auxiliary, so a failure here
+        # must not abort AST generation.
+        try:
+            liveness = ASTILiveness(self.function).flag_liveness()
+            self.astinterface.astree.provenance.flag_liveness = liveness
+        except Exception:
+            chklogger.logger.exception(
+                "flag-liveness computation failed for %s", self.function.faddr)
 
     def set_invariants(self) -> None:
         invariants = self.function.invariants
