@@ -1237,8 +1237,7 @@ def mk_xpointer_expr(
 
         if not compinfo.has_field_offset(cst2):
             if not anonymous:
-                chklogger.diagnostic(
-                    DC.TYPING,
+                chklogger.logger.info(
                     "Compinfo %s does not have a field at offset %d "
                     + "(at address %s)",
                     compinfo.compname, cst2, iaddr)
