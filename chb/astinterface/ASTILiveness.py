@@ -92,13 +92,11 @@ class ASTILiveness:
         def is_real_def_site(defloc: str) -> bool:
             """True if defloc is an instruction address that can carry a kill.
 
-            "init" is the analysis's marker for a value defined on function
-            entry rather than by an instruction. An "F"-prefixed address (e.g.
-            "F:0x...._0x....") belongs to an instruction the analysis inlined
-            from another function, so it is not a site in this function's CFG.
-            Neither one can kill anything here.
+            Only "init" is excluded since it is the analysis's marker for a
+            value defined on function entry rather than by an instruction, so
+            there is no instruction there to do the killing.
             """
-            return not (defloc == "init" or defloc.startswith("F"))
+            return defloc != "init"
 
         use: Dict[str, Set[str]] = defaultdict(set)
         kill: Dict[str, Set[str]] = defaultdict(set)
