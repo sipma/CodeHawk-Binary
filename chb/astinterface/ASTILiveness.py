@@ -40,9 +40,12 @@ get a false "dead".
 """
 
 from collections import defaultdict
+
 from typing import (
     Callable, Dict, List, Mapping, Optional, Sequence, Set, TYPE_CHECKING,
     Tuple, Union)
+
+from chb.util.loggingutil import chklogger
 
 if TYPE_CHECKING:
     from chb.app.Function import Function
@@ -64,7 +67,7 @@ class ASTILiveness:
     def flag_liveness(self) -> Dict[str, Dict[str, List[str]]]:
         """NZCV flag live-in/live-out per instruction address."""
         (use, kill) = self._use_kill(
-            lambda instr: instr.xdata.flag_reachingdefs)
+            lambda instr: instr.xdata.flag_reachingdefs, warn_on_init=True)
         return self._liveness(use, kill)
 
     def _use_kill(
@@ -73,7 +76,8 @@ class ASTILiveness:
                 ["Instruction"],
                 Sequence[Optional[Union["FlagReachingDefFact",
                                         "ReachingDefFact"]]]],
-            names: Optional[Set[str]] = None
+            names: Optional[Set[str]] = None,
+            warn_on_init: bool = False
     ) -> Tuple[Dict[str, Set[str]], Dict[str, Set[str]]]:
         """Build per-address use and kill (def) sets from reaching-def facts.
 
@@ -87,6 +91,9 @@ class ASTILiveness:
         When names is given, only variables in that set are considered. "PC" is
         always excluded regardless of names. It is not a value a consumer can
         treat as live or dead.
+
+        warn_on_init reports uses whose value is defined on function entry
+        rather than by an instruction.
         """
 
         def is_real_def_site(defloc: str) -> bool:
@@ -100,6 +107,7 @@ class ASTILiveness:
 
         use: Dict[str, Set[str]] = defaultdict(set)
         kill: Dict[str, Set[str]] = defaultdict(set)
+        warned_init: Set[Tuple[str, str]] = set()
         for (iaddr, instr) in self.fn.instructions.items():
             for fact in get_facts(instr):
                 if fact is None:
@@ -113,6 +121,13 @@ class ASTILiveness:
                 for d in fact.deflocations:
                     da = str(d)
                     if not is_real_def_site(da):
+                        if warn_on_init and (iaddr, name) not in warned_init:
+                            warned_init.add((iaddr, name))
+                            chklogger.logger.warning(
+                                "flag %s used at %s in function %s is reached by "
+                                "an '%s' definition: its value predates function "
+                                "entry.",
+                                name, iaddr, self.fn.faddr, da)
                         continue
                     kill[da].add(name)
         return (use, kill)
