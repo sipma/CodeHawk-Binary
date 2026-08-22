@@ -123,7 +123,7 @@ class ASTILiveness:
                     if not is_real_def_site(da):
                         if warn_on_init and (iaddr, name) not in warned_init:
                             warned_init.add((iaddr, name))
-                            chklogger.logger.warning(
+                            chklogger.logger.info(
                                 "flag %s used at %s in function %s is reached by "
                                 "an '%s' definition: its value predates function "
                                 "entry.",
