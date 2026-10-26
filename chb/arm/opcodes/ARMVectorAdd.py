@@ -25,13 +25,18 @@
 # SOFTWARE.
 # ------------------------------------------------------------------------------
 
-from typing import List, TYPE_CHECKING
+from typing import List, Tuple, TYPE_CHECKING
 
 from chb.app.InstrXData import InstrXData
 
+import chb.ast.ASTNode as AST
+from chb.astinterface.ASTInterface import ASTInterface
+
 from chb.arm.ARMDictionaryRecord import armregistry
-from chb.arm.ARMOpcode import ARMOpcode, simplify_result
+from chb.arm.ARMOpcode import ARMOpcode, ARMOpcodeXData
 from chb.arm.ARMOperand import ARMOperand
+
+import chb.invariants.XXprUtil as XU
 
 import chb.util.fileutil as UF
 
@@ -39,6 +44,63 @@ from chb.util.IndexedTable import IndexedTableValue
 
 if TYPE_CHECKING:
     from chb.arm.ARMDictionary import ARMDictionary
+    from chb.invariants.XVariable import XVariable
+    from chb.invariants.XXpr import XXpr
+
+
+class ARMVectorAddXData(ARMOpcodeXData):
+    """
+    Data format:
+    - variables:
+    0: vdst
+
+    - expressions:
+    0: xsrc1
+    1: xsrc2
+    2: xdst
+    3: rxsrc1
+    4: rxsrc2
+    5: rxdst
+    """
+
+    def __init__(self, xdata: InstrXData) -> None:
+        ARMOpcodeXData.__init__(self, xdata)
+
+    @property
+    def vdst(self) -> "XVariable":
+        return self.var(0, "vdst")
+
+    @property
+    def xsrc1(self) -> "XXpr":
+        return self.xpr(0, "xsrc1")
+
+    @property
+    def xsrc2(self) -> "XXpr":
+        return self.xpr(1, "xsrc2")
+
+    @property
+    def xdst(self) -> "XXpr":
+        return self.xpr(2, "xdst")
+
+    @property
+    def rxsrc1(self) -> "XXpr":
+        return self.xpr(3, "rxsrc1")
+
+    @property
+    def rxsrc2(self) -> "XXpr":
+        return self.xpr(4, "rxsrc2")
+
+    @property
+    def rxdst(self) -> "XXpr":
+        return self.xpr(5, "rxdst")
+
+    @property
+    def annotation(self) -> str:
+        lhs = str(self.vdst)
+        rhs1 = str(self.rxsrc1)
+        rhs2 = str(self.rxsrc2)
+        assign = f"{lhs} = {rhs1} + {rhs2}"
+        return self.add_instruction_condition(assign)
 
 
 @armregistry.register_tag("VADD", ARMOpcode)
@@ -63,10 +125,73 @@ class ARMVectorAdd(ARMOpcode):
     def operands(self) -> List[ARMOperand]:
         return [self.armd.arm_operand(self.args[i]) for i in [1, 2, 3]]
 
+    @property
+    def opargs(self) -> List[ARMOperand]:
+        return [self.armd.arm_operand(self.args[i]) for i in [1, 2, 3]]
+
     def mnemonic_extension(self) -> str:
         cc = ARMOpcode.mnemonic_extension(self)
         vfpdt = str(self.armd.arm_vfp_datatype(self.args[0]))
         return cc + vfpdt
 
     def annotation(self, xdata: InstrXData) -> str:
-        return "pending"
+        xd = ARMVectorAddXData(xdata)
+        return xd.annotation
+
+    def ast_prov(
+            self,
+            astree: ASTInterface,
+            iaddr: str,
+            bytestring: str,
+            xdata: InstrXData) -> Tuple[
+                List[AST.ASTInstruction], List[AST.ASTInstruction]]:
+
+        annotations: List[str] = [iaddr, "VADD"]
+
+        # low-level assignment
+
+        (ll_lhs, _, _) = self.opargs[0].ast_lvalue(astree)
+        (ll_rhs1, _, _) = self.opargs[1].ast_rvalue(astree)
+        (ll_rhs2, _, _) = self.opargs[2].ast_rvalue(astree)
+        ll_rhs = astree.mk_binary_op("plus", ll_rhs1, ll_rhs2)
+
+        ll_assign = astree.mk_assign(
+            ll_lhs,
+            ll_rhs,
+            iaddr=iaddr,
+            bytestring=bytestring,
+            annotations=annotations)
+
+        # high-level assignment
+
+        xd = ARMVectorAddXData(xdata)
+
+        lhs = xd.vdst
+        rhs1 = xd.rxsrc1
+        rhs2 = xd.rxsrc2
+        rdefs = xdata.reachingdefs
+        defuses = xdata.defuses
+        defuseshigh = xdata.defuseshigh
+
+        hl_lhs = XU.xvariable_to_ast_lval(lhs, xdata, iaddr, astree)
+        hl_rhs1 = XU.xxpr_to_ast_def_expr(rhs1, xdata, iaddr, astree)
+        hl_rhs2 = XU.xxpr_to_ast_def_expr(rhs2, xdata, iaddr, astree)
+        hl_rhs = astree.mk_binary_op("plus", hl_rhs1, hl_rhs2)
+
+        hl_assign = astree.mk_assign(
+            hl_lhs,
+            hl_rhs,
+            iaddr=iaddr,
+            bytestring=bytestring,
+            annotations=annotations)
+
+        astree.add_instr_mapping(hl_assign, ll_assign)
+        astree.add_instr_address(hl_assign, [iaddr])
+        astree.add_expr_mapping(hl_rhs, ll_rhs)
+        astree.add_lval_mapping(hl_lhs, ll_lhs)
+        astree.add_expr_reachingdefs(hl_rhs, rdefs[2:])
+        astree.add_expr_reachingdefs(ll_rhs, rdefs[:2])
+        astree.add_lval_defuses(hl_lhs, defuses[0])
+        astree.add_lval_defuses_high(hl_lhs, defuseshigh[0])
+
+        return ([hl_assign], [ll_assign])
