@@ -261,7 +261,7 @@ def buildast(args: argparse.Namespace) -> NoReturn:
             gaddr = int(revfunctionnames[vname], 16)
         elif vname in fnames:
             gaddr = int(fnames[vname], 16)
-        elif vname.startswith("sub_"):
+        elif vname.startswith("sub_") and vname[4].isdigit():
             if "_" in vname[4:]:
                 index = vname[4:].index("_")
                 gaddr = int("0x" + vname[4:(index+4)], 16)
@@ -269,7 +269,7 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                 gaddr = int("0x" + vname[4:], 16)
         elif app.functionsdata.is_unique_function_name(vname):
             gaddr = int(app.functionsdata.function_address_from_name(vname), 16)
-        elif vname.startswith("gv_"):
+        elif vname.startswith("gv_") and vname[3].isdigit():
             if "_" in vname[3:]:
                 index = vname[3:].index("_")
                 gaddr = int("0x" + vname[3:(index+3)], 16)
