@@ -85,8 +85,12 @@ class NativeJsonFormatter(logging.Formatter):
 
 class CHKLogID(str, Enum):
 
+    INTF_XDATA_0001 = "INTF-XDATA-0001"    # incompatible data in xdata
+    INTF_XDATA_0002 = "INTF-XDATA-0002"
+    INTF_XDATA_0003 = "INTF-XDATA-0003"
+
     MISC_ABORT_0001 = "MISC-ABORT-0001"
-    MISC_NOTAGID_0001 = "MISC-NOTAGID-0001"
+    MISC_NOTAGID_0001 = "MISC-NOTAGID-0001"   # no tag-id: not yet tagged
 
     RDEF_CLOBBER_0001 = "RDEF-CLOBBER-0001"
     RDEF_CLOBBER_0002 = "RDEF-CLOBBER-0002"
