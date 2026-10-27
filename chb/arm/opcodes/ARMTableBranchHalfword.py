@@ -69,4 +69,8 @@ class ARMTableBranchHalfword(ARMOpcode):
 
         xprs[0]: value of index register
         """
-        return "branch on " + str(xdata.xprs[0])
+
+        if len(xdata.xprs) > 0:
+            return "branch on " + str(xdata.xprs[0])
+        else:
+            return "Error value"
