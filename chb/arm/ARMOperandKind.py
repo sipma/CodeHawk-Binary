@@ -165,6 +165,10 @@ class ARMOperandKind(ARMDictionaryRecord):
         raise UF.CHBError("Operand is not a register list " + str(self))
 
     @property
+    def extension_registers(self) -> List["ARMExtensionRegister"]:
+        raise UF.CHBError("Operand is not an extension register list" + str(self))
+
+    @property
     def is_extension_register_list(self) -> bool:
         return False
 

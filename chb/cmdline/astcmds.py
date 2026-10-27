@@ -394,6 +394,7 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                     functions_failed += 1
                     # continue
                     raise
+                '''
                 except Exception as e:
                     chklogger.logger.critical_id(
                         CHKLogID.MISC_ABORT_0001,
@@ -404,6 +405,7 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                         + ")")
                     functions_failed += 1
                     continue
+                '''
 
                 if len(asts) >= 2:
                     astapi.add_function_ast(astree, asts, verbose)
