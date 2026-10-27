@@ -38,6 +38,8 @@ type xpr_t =
   | XAttr of string * xpr_t          "a"       2      1
 
 """
+import struct
+
 from typing import (
     Any, Callable, cast, Dict, List, Mapping, Optional, Sequence, TYPE_CHECKING)
 
@@ -592,6 +594,37 @@ class XprConstant(XXpr):
         else:
             raise UF.CHBError(
                 "Constant is not an integer constant: " + str(self))
+
+    @property
+    def convert_imm32_to_float(self) -> float:
+        """Convert a 32-bit integer constant value to a float.
+
+        Reference:
+        https://stackoverflow.com/questions/33483846/how-to-convert-32-bit-binary-to-float
+        """
+        try:
+            ci = self.intvalue
+            return struct.unpack('f', struct.pack('I', ci))[0]
+        except UF.CHBError as e:
+            raise UF.CHBError(
+                "Constant in imm32 conversion is not an integer constant: "
+                + str(self) + " (" + str(e) + ")")
+
+    @property
+    def convert_imm64_to_float(self) -> float:
+        """Convert a 64-bit integer constant value to a float.
+
+        Reference:
+        https://stackoverflow.com/questions/8751653/how-to-convert-a-binary-string-into-a-float-value
+        """
+        try:
+            ci = self.intvalue
+            b8 = struct.pack('Q', ci)
+            return struct.unpack('d', b8)[0]
+        except UF.CHBError as e:
+            raise UF.CHBError(
+                "Constant in imm64 conversion is not an integer constant: "
+                + str(self) + " (" + str(e) + ")")
 
     def all_variables_with_property(
             self, p: Callable[[XVariable], bool]) -> bool:
