@@ -141,8 +141,16 @@ class ARMVectorPush(ARMOpcode):
         return [self.armd.arm_operand(self.args[i]) for i in [0, 1]]
 
     @property
+    def extension_register_list_op(self) -> "ARMExtensionRegListOp":
+        return cast("ARMExtensionRegListOp", self.opargs[1].opkind)
+
+    @property
     def register_count(self) -> int:
-        return cast ("ARMExtensionRegListOp", self.opargs[1].opkind).count
+        return self.extension_register_list_op.count
+
+    @property
+    def is_double_precision(self) -> bool:
+        return self.extension_register_list_op.is_double_precision
 
     def annotation(self, xdata: InstrXData) -> str:
         xd = ARMVectorPushXData(xdata)
@@ -175,6 +183,8 @@ class ARMVectorPush(ARMOpcode):
         spuseshigh = xdata.defuseshigh[0]
         memuseshigh = xdata.defuseshigh[1:]
 
+        regwidth = 8 if self.is_double_precision else 4
+
         annotations: List[str] = [iaddr, "VPUSH"]
 
         # low-level assignments
@@ -187,7 +197,7 @@ class ARMVectorPush(ARMOpcode):
 
         regsop = self.opargs[1]
         registers = regsop.extension_registers
-        sp_decr = 4 * len(registers)
+        sp_decr = regwidth * len(registers)
         sp_offset = sp_decr
 
         for (i, r) in enumerate(registers):
@@ -228,7 +238,7 @@ class ARMVectorPush(ARMOpcode):
             astree.add_lval_defuses(hl_lhs, memuses[i])
             astree.add_lval_defuses_high(hl_lhs, memuseshigh[i])
 
-            sp_offset -= 4
+            sp_offset -= regwidth
 
         # low-level SP assignment
 

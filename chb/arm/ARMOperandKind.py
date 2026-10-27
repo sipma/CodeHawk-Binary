@@ -4,7 +4,7 @@
 # ------------------------------------------------------------------------------
 # The MIT License (MIT)
 #
-# Copyright (c) 2021-2024  Aarno Labs LLC
+# Copyright (c) 2021-2026  Aarno Labs LLC
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -575,6 +575,10 @@ class ARMExtensionRegListOp(ARMOperandKind):
     @property
     def count(self) -> int:
         return len(self.extension_registers)
+
+    @property
+    def is_double_precision(self) -> bool:
+        return self.extension_registers[0].is_double
 
     def __str__(self) -> str:
         return "{" + ",".join(str(r) for r in self.extension_registers) + "}"
