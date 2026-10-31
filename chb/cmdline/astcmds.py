@@ -4,7 +4,7 @@
 # ------------------------------------------------------------------------------
 # The MIT License (MIT)
 #
-# Copyright (c) 2022-2025  Aarno Labs, LLC
+# Copyright (c) 2022-2026  Aarno Labs, LLC
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -48,6 +48,7 @@ from chb.ast.ASTCPrettyPrinter import ASTCPrettyPrinter
 from chb.ast.ASTReturnSequences import ASTReturnSequences
 from chb.ast.ASTSerializer import ASTSerializer
 from chb.ast.ASTSymbolTable import ASTGlobalSymbolTable, ASTLocalSymbolTable
+from chb.ast.ASTVariablesReferenced import ASTVariablesReferenced
 
 from chb.astinterface.ASTInterface import ASTInterface
 from chb.astinterface.ASTInterfaceFunction import ASTInterfaceFunction
@@ -287,6 +288,8 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                 vtype=vinfo.vtype.convert(typconverter),
                 globaladdress=gaddr)
 
+    declared_globals: Set[str] = {v.vname for v in globalsymboltable.symbols}
+
     typconverter.initialize_enuminfos(app.bcfiles.genumtags)
     typconverter.initialize_compinfos()
 
@@ -419,6 +422,17 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                     continue
 
                 if len(asts) >= 2:
+                    referenced = (
+                        ASTVariablesReferenced().variables_referenced(asts[0]))
+                    for vname in sorted(referenced):
+                        if vname.startswith("gv_") and vname not in declared_globals:
+                            chklogger.logger.error_id(
+                                CHKLogID.USER_GLBDECL_0002,
+                                "USER: Global variable %s is referenced in the "
+                                + "lifting of "
+                                + "%s, but not declared in the header file",
+                                vname, faddr)
+
                     astapi.add_function_ast(astree, asts, verbose)
 
                     print("\n// Lifted code for function " + faddr)

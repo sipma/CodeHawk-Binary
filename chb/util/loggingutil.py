@@ -145,6 +145,7 @@ class CHKLogID(str, Enum):
 
     USER_FNPROTO_0001 = "USER-FNPROTO-0001"
     USER_GLBDECL_0001 = "USER-GLBDECL-0001"  # missing decl of global variable
+    USER_GLBDECL_0002 = "USER-GLBDECL-0002"
     USER_STRCTDEF_0001 = "USER-STRCTDEF-0001"   # missing struct definition
     USER_STRCTDEF_0002 = "USER-STRCTDEF-0002"   # idem
 
