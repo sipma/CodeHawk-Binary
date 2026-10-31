@@ -141,6 +141,7 @@ class CHKLogID(str, Enum):
     UNSP_RETVAR_0001 = "UNSP-RETVAR-0001"
     UNSP_STCKARG_0001 = "UNSP-STCKARG-0001"
 
+    USER_FNPROTO_0001 = "USER-FNPROTO-0001"
     USER_GLBDECL_0001 = "USER-GLBDECL-0001"  # missing decl of global variable
     USER_STRCTDEF_0001 = "USER-STRCTDEF-0001"   # missing struct definition
     USER_STRCTDEF_0002 = "USER-STRCTDEF-0002"   # idem
@@ -356,6 +357,12 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
             "the function to be lifted contains a kind of stack argument that "
             "is not yet supported"),
         "action": "report to CodeHawk maintainers"
+    },
+    "USER-FNPROTO": {
+        "description": (
+            "function prototype (signature) is missing; a function cannot be "
+            "lifted without a valid function signature"),
+        "action": "provide a function prototype in the header file"
     },
     "USER-GLBDECL": {
         "description": (

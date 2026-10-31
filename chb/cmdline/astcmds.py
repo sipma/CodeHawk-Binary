@@ -329,6 +329,19 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                         appsignature = fsummary.function_signature
                 elif fname == "main":
                     astprototype = astree.mk_vinfo_main_function(faddr)
+                else:
+                    chklogger.logger.error_id(
+                        CHKLogID.USER_FNPROTO_0001,
+                        "No prototype found for function %s (%s): add a "
+                        + "declaration for "
+                        + "this name to the header file; function not lifted",
+                        fname, faddr)
+                    UC.print_error(
+                        "No lifting generated for "
+                        + faddr
+                        + ": no function prototype")
+                    functions_failed += 1
+                    continue
 
                 # Offsets are negated to make them consistent with their internal
                 # numerical value.
@@ -394,7 +407,6 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                     functions_failed += 1
                     # continue
                     raise
-                '''
                 except Exception as e:
                     chklogger.logger.critical_id(
                         CHKLogID.MISC_ABORT_0001,
@@ -405,7 +417,6 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                         + ")")
                     functions_failed += 1
                     continue
-                '''
 
                 if len(asts) >= 2:
                     astapi.add_function_ast(astree, asts, verbose)
