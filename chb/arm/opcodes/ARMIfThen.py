@@ -135,14 +135,18 @@ class ARMIfThen(ARMOpcode):
         reachingdefs = xdata.reachingdefs
 
         ftconds = self.ft_conditions(xdata)
-        if len(ftconds) == 2:
-            if reverse:
-                condition = ftconds[0]
-            else:
-                condition = ftconds[1]
-
-        hl_astcond = XU.xxpr_to_ast_def_expr(condition, xdata, iaddr, astree)
         ll_astcond = self.ast_cc_expr(astree)
+
+        if len(ftconds) != 2:
+            chklogger.logger.error_id(
+                CHKLogID.RSLT_ITNOCC_0001,
+                "IT: block condition without branch conditions at address %s",
+                iaddr)
+            hl_astcond = astree.mk_temp_lval_expression()
+            return (hl_astcond, ll_astcond)
+
+        condition = ftconds[0] if reverse else ftconds[1]
+        hl_astcond = XU.xxpr_to_ast_def_expr(condition, xdata, iaddr, astree)
 
         astree.add_expr_mapping(hl_astcond, ll_astcond)
         astree.add_expr_reachingdefs(hl_astcond, xdata.reachingdefs)

@@ -121,6 +121,8 @@ class CHKLogID(str, Enum):
     RSLT_ERRVAL_0006 = "RSLT-ERRVAL-0006"
     RSLT_ERRVAL_0007 = "RSLT-ERRVAL-0007"
 
+    RSLT_ITNOCC_0001 = "RSLT-ITNOCC-0001"   # thumb IfThen condition
+
     RSLT_PRNOCC_0001 = "RSLT-PRNOCC-0001"   # predicated instruction condition
     RSLT_RANDOM_0001 = "RSLT-RANDOM-0001"
     RSLT_XCFALSE_0001 = "RSLT-XCFALSE-0001"
@@ -258,6 +260,10 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
     "RSLT-ERRVAL": {
         "description": (
             "a memory value or memory location cannot be resolved"),
+        "action": "report to the CodeHawk maintainers"
+    },
+    "RSLT-ITNOCC": {
+        "description": "thumb ifthen instruction without condition",
         "action": "report to the CodeHawk maintainers"
     },
     "RSLT-PRNOCC": {
