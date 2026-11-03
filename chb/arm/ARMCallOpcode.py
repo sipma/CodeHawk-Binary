@@ -467,7 +467,10 @@ class ARMCallOpcode(ARMOpcode):
                         hl_arg: AST.ASTExpr = astree.mk_string_constant(
                             ll_arg, cstr, saddr)
 
-                    elif x.is_int_constant and argtype.is_float:
+                    elif (
+                            x.is_int_constant
+                            and argtype is not None
+                            and argtype.is_float):
                         x = cast("XprConstant", x)
                         argtype = cast(AST.ASTTypFloat, argtype)
                         if argtype.is_fkind_float:
