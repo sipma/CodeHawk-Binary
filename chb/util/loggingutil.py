@@ -125,6 +125,7 @@ class CHKLogID(str, Enum):
 
     RSLT_PRNOCC_0001 = "RSLT-PRNOCC-0001"   # predicated instruction condition
     RSLT_RANDOM_0001 = "RSLT-RANDOM-0001"
+    RSLT_UNTYPED_0001 = "RSLT-UNTYPED-0001"
     RSLT_XCFALSE_0001 = "RSLT-XCFALSE-0001"
     RSLT_XCTRUE_0001 = "RSLT-XCTRUE-0001"
 
@@ -148,6 +149,8 @@ class CHKLogID(str, Enum):
     USER_GLBDECL_0002 = "USER-GLBDECL-0002"
     USER_STRCTDEF_0001 = "USER-STRCTDEF-0001"   # missing struct definition
     USER_STRCTDEF_0002 = "USER-STRCTDEF-0002"   # idem
+    USER_UNTYPEDSSA_0001 = "USER-UNTYPEDSSA-0001"
+    USER_UNTYPEDST_0001 = "USER-UNTYPEDST-0001"
 
 
 # Log-id categories (the first component of the log-id), with the party that
@@ -276,6 +279,12 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
             "the lifting encountered a constant with unknown value"),
         "action": "report to the CodeHawk maintainers"
     },
+    "RSLT-UNTYPED": {
+        "description": (
+            "the lifting contains an untyped placeholder variable caused "
+            "by incomplete resolution of a memory value or condition"),
+        "action": "report to the CodeHawk maintainers"
+    },
     "RSLT-XCFALSE": {
         "description": (
             "the lifting encountered a constant condition False; this often "
@@ -388,6 +397,18 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
             "opaque definition"),
         "action": (
             "add a full definition of the struct to the header file")
+    },
+    "USER-UNTYPEDSSA": {
+        "description": "the lifting contains an untyped register variable",
+        "action": (
+            "add a register-variable intro with the type to the "
+            "function annotations in the userdata")
+    },
+    "USER-UNTYPEDST": {
+        "description": "the lifting contains an untyped stack variable",
+        "action": (
+            "add a stack-variable intro with the type to the function "
+            "annotations in the userdata")
     }
 }
 

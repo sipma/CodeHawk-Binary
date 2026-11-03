@@ -422,6 +422,8 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                     continue
 
                 if len(asts) >= 2:
+
+                    # check if all global variables are typed
                     referenced = (
                         ASTVariablesReferenced().variables_referenced(asts[0]))
                     for vname in sorted(referenced):
@@ -432,6 +434,33 @@ def buildast(args: argparse.Namespace) -> NoReturn:
                                 + "lifting of "
                                 + "%s, but not declared in the header file",
                                 vname, faddr)
+
+                    # check if all local variables are typed
+                    for vinfo_u in localsymboltable.untyped_locals(referenced):
+                        if vinfo_u.vname.startswith("astmem_tmp"):
+                            chklogger.logger.error_id(
+                                CHKLogID.RSLT_UNTYPED_0001,
+                                "Error placeholder variable %s in the lifting "
+                                + "of %s has no type",
+                                vinfo_u.vname, faddr)
+
+                        elif vinfo_u.is_ssa:
+                            intros = astinterface.ssa_addresses.get(
+                                vinfo_u.vname, set([]))
+                            chklogger.logger.error_id(
+                                CHKLogID.USER_UNTYPEDSSA_0001,
+                                "Introduced ssa variable %s in the lifting of "
+                                + "%s has no type (defined at %s)",
+                                vinfo_u.vname,
+                                faddr,
+                                ", ".join(list(intros)))
+
+                        else:
+                            chklogger.logger.error_id(
+                                CHKLogID.USER_UNTYPEDST_0001,
+                                "Stack variable %s in the lifting of %s has no "
+                                + "type",
+                                vinfo_u.vname, faddr)
 
                     astapi.add_function_ast(astree, asts, verbose)
 

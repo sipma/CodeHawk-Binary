@@ -45,6 +45,7 @@ from typing import (
     Union)
 
 
+from chb.app.LhsTypeResult import LhsTypeResult, LhsTypeResolved
 from chb.ast.AbstractSyntaxTree import AbstractSyntaxTree, ASTSpanRecord, nooffset
 from chb.ast.ASTBasicCTyper import ASTBasicCTyper
 from chb.ast.ASTByteSizeCalculator import (
@@ -160,6 +161,10 @@ class ASTInterface:
     @property
     def function_annotation(self) -> Optional[FunctionAnnotation]:
         return self._functionannotation
+
+    @property
+    def ssa_addresses(self) -> Dict[str, Set[str]]:
+        return self._ssa_addresses
 
     def has_function_annotation(self) -> bool:
         return self.function_annotation is not None
@@ -315,11 +320,23 @@ class ASTInterface:
             return fnannotation.has_stack_variable_introduction(offset)
         return False
 
+    def has_stack_variable_intro_by_name(self, name: str) -> bool:
+        fnannotation = self.function_annotation
+        if fnannotation is not None:
+            return fnannotation.has_stack_variable_intro_by_name(name)
+        return False
+
     def get_stack_variable_intro(self, offset: int) -> StackVarIntro:
         fnannotation = self.function_annotation
         if fnannotation is not None:
             return fnannotation.get_stack_variable_introduction(offset)
         raise UF.CHBError("No function annotation found")
+
+    def get_stack_variable_intro_by_name(self, name: str) -> Optional[StackVarIntro]:
+        fnannotation = self.function_annotation
+        if fnannotation is not None:
+            return fnannotation.get_stack_variable_intro_by_name(name)
+        return None
 
     def set_available_expressions(
             self, aexprs: Dict[str, Dict[str, Tuple[int, int, str]]]) -> None:
@@ -971,7 +988,7 @@ class ASTInterface:
     def introduce_ssa_variables(
             self,
             rdeflocs: Dict[str, List[List[str]]],
-            ftypes: Dict[str, Dict[str, "BCTyp"]],
+            ftypes: Dict[str, Dict[str, LhsTypeResult]],
             ssanames: Dict[str, str] = {}) -> Dict[str, Dict[str, List[str]]]:
         """Creates ssa variables based on reaching definition locations.
 
@@ -995,8 +1012,10 @@ class ASTInterface:
                     vtype = None
                     if loc1 in ftypes:
                         if reg in ftypes[loc1]:
-                            vbctype = ftypes[loc1][reg]
-                            vtype = vbctype.convert(self.typconverter)
+                            lhstr = ftypes[loc1][reg]
+                            if isinstance(lhstr, LhsTypeResolved):
+                                vbctype = lhstr.btype
+                                vtype = vbctype.convert(self.typconverter)
                     vinfo = self.mk_ssa_register_varinfo(
                         reg, loc1, vtype=vtype, prefix=ssanames.get(loc1))
                     if vtype is None:
@@ -1013,12 +1032,13 @@ class ASTInterface:
     def introduce_stack_variables(
             self,
             stackframe: "FunctionStackframe",
-            stackvartypes: Dict[int, "BCTyp"]) -> None:
+            stackvartypes: Dict[int, LhsTypeResult]) -> None:
         """Creates stack variables/buffers for all stack offsets with types."""
 
-        for (offset, bctype) in sorted(stackvartypes.items()):
-            vtype = bctype.convert(self.typconverter)
-            self.mk_stack_variable_lval(offset, vtype=vtype)
+        for (offset, lhstr) in sorted(stackvartypes.items()):
+            if isinstance(lhstr, LhsTypeResolved):
+                vtype = lhstr.btype.convert(self.typconverter)
+                self.mk_stack_variable_lval(offset, vtype=vtype)
 
     def mk_ssa_register_varinfo(
             self,

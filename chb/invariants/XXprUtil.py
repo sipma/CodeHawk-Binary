@@ -92,6 +92,8 @@ import struct
 
 from typing import cast, List, Optional, Sequence, Set, Tuple, TYPE_CHECKING
 
+from chb.app.LhsTypeResult import LhsTypeResolved
+
 from chb.ast.AbstractSyntaxTree import nooffset
 import chb.ast.ASTNode as AST
 from chb.astinterface.ASTInterface import ASTInterface
@@ -1938,8 +1940,9 @@ def xvariable_to_ast_lval(
     # register lhs
     elif xv.is_register_variable:
         if ctype is None:
-            bctype = xdata.function.register_lhs_type(iaddr, str(xv))
-            if bctype is not None:
+            lhstyperesult = xdata.function.register_lhs_type(iaddr, str(xv))
+            if isinstance(lhstyperesult, LhsTypeResolved):
+                bctype = lhstyperesult.btype
                 ctype = bctype.convert(astree.typconverter)
 
         # Note: Ideally the rhs parameter should be replaced with an astrhs
