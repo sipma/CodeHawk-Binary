@@ -78,7 +78,7 @@ import chb.ast.ASTNode as AST
 from chb.astinterface.ASTInterface import ASTInterface
 
 import chb.util.fileutil as UF
-
+from chb.util.loggingutil import chklogger, CHKLogID
 from chb.util.IndexedTable import IndexedTableValue
 
 if TYPE_CHECKING:
@@ -659,10 +659,12 @@ class ARMShiftedRegisterOp(ARMOperandKind):
                 elif srt.is_arithmetic_shift_right:
                     xpr = astree.mk_binary_op("asr", rvar, shiftoperand)
                 else:
-                    raise UF.CHBError(
-                        "Shifted register operand "
-                        + str(self)
-                        + " not yet supported")
+                    chklogger.logger.error_id(
+                        CHKLogID.UNSP_OPRVALUE_0001,
+                        "Shifted register operand %s not yet supported",
+                        str(self))
+                    xpr = astree.mk_temp_lval_expression()
+
         elif srt.is_reg_srt:
             srt = cast ("ARMRegSRT", srt)
             shiftregop = (
