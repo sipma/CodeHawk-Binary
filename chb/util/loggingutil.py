@@ -142,6 +142,7 @@ class CHKLogID(str, Enum):
     UNSP_JMPTBL_0001 = "UNSP-JMPTBL-0001"
     UNSP_OPRVALUE_0001 = "UNSP-OPRVALUE-0001"
     UNSP_PTRXPR_0001 = "UNSP-PTRXPR-0001"
+    UNSP_REGLOC_0001 = "UNSP-REGLOC-0001"
     UNSP_RETVAR_0001 = "UNSP-RETVAR-0001"
     UNSP_STCKARG_0001 = "UNSP-STCKARG-0001"
 
@@ -367,6 +368,11 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
         "description": (
             "the function to be lifted contains a kind of pointer expression "
             "that is not yet supported"),
+        "action": "report to CodeHawk maintainers"
+    },
+    "UNSP-REGLOC": {
+        "description": (
+            "a register is referenced for which no location and size is available"),
         "action": "report to CodeHawk maintainers"
     },
     "UNSP-RETVAR": {
