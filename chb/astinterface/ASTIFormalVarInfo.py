@@ -162,6 +162,8 @@ class ASTIFormalVarInfo:
             self._arglocs.append((argloc, AST.ASTNoOffset(), 4))
             return self.argindex + 1
         elif argtype.is_struct:
+            if argtype.is_typedef:
+                argtype = cast("BCT.BCTypNamed", argtype).typedef.ttype
             structtyp = cast("BCT.BCTypComp", argtype)
             fieldoffsets = structtyp.compinfo.fieldoffsets()
             argbytecounter = 4 * self.argindex
