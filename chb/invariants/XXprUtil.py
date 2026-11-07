@@ -351,17 +351,18 @@ def vreturn_deref_value_to_ast_lval_expression(
                     else:
                         if not anonymous:
                             chklogger.logger.error_id(
-                                CHKLogID.UNSP_RETVAR_0001,
-                                "UNSP: Non-struct pointer type %s for variable "
-                                + "%s not yet handled at %s",
+                                CHKLogID.USER_FNPROTO_0002,
+                                "USER: Non-struct pointer type %s for variable "
+                                + "%s at %s (check function prototype)",
                                 str(vtype), str(vexpr), iaddr)
                         return astree.mk_temp_lval_expression()
 
                 else:
                     if not anonymous:
-                        chklogger.logger.error(
-                            "Non-pointer type %s encountered for %s with offset %d "
-                            + "at %s",
+                        chklogger.logger.error_id(
+                            CHKLogID.USER_FNPROTO_0003,
+                            "USER: Non-pointer type %s encountered for %s with "
+                            + "offset %d at %s (check function prototype)",
                             str(vtype), str(basevar), coff, iaddr)
                     return astree.mk_temp_lval_expression()
     if not anonymous:
@@ -402,7 +403,8 @@ def field_pointer_to_ast_memref_expr(
 
     if not compinfo.has_fields():
         if not anonymous:
-            chklogger.logger.error(
+            chklogger.logger.error_id(
+                CHKLogID.USER_STRCTDEF_0003,
                 "Struct definition is missing for %s at address %s (no fields found)",
                 compinfo.compname, iaddr)
         return astree.mk_temp_lval_expression()
@@ -427,7 +429,8 @@ def field_pointer_to_ast_memref_expr(
             fcompinfo = astree.compinfo(fcompkey)
             (subfield, subrestoffset) = fcompinfo.field_at_offset(restoffset)
             if subrestoffset > 0:
-                chklogger.logger.error(
+                chklogger.logger.error_id(
+                    CHKLogID.UNSP_DATASTR_0004,
                     "Second-level rest offset in field-pointer memref not yet "
                     + "handled for %s at %s: %s",
                     str(astexpr), iaddr, str(subrestoffset))
@@ -435,7 +438,8 @@ def field_pointer_to_ast_memref_expr(
             subfoffset = astree.mk_field_offset(subfield.fieldname, fcompkey)
         else:
             if not anonymous:
-                chklogger.logger.error(
+                chklogger.logger.error_id(
+                    CHKLogID.UNSP_DATASTR_0003,
                     "Non-struct type for second-level rest offset not yet handled "
                     + " for %s with offset %d at %s",
                     str(astexpr), offset, iaddr)
@@ -1208,7 +1212,8 @@ def xunary_to_ast_def_expr(
         return xxpr_to_ast_def_expr(xpr, xdata, iaddr, astree, anonymous=anonymous)
 
     if not anonymous:
-        chklogger.logger.error(
+        chklogger.logger.error_id(
+            CHKLogID.UNSP_UNOP_0001,
             "AST def conversion of unary expression %s at address %s not yet "
             + "supported",
             f"{operator} {xpr}", iaddr)
@@ -1231,7 +1236,8 @@ def mk_xpointer_expr(
 
     if not axpr2.is_integer_constant:
         if not anonymous:
-            chklogger.logger.warning(
+            chklogger.logger.warning_id(
+                CHKLogID.UNSP_PTRXPR_0002,
                 "AST def conversion of pointer expression encountered non-constant "
                 + " addend: %s at address %s",
                 str(axpr2), iaddr)
@@ -1574,7 +1580,8 @@ def xmemory_dereference_lval_expr(
             (field, rem) = compinfo.field_at_offset(scalaroffset)
             if rem > 0:
                 if not anonymous:
-                    chklogger.logger.warning(
+                    chklogger.logger.warning_id(
+                        CHKLogID.UNSP_DATASTR_0005,
                         "Positive remaining offset not yet supported in %s at %s",
                         str(xaddr), iaddr)
                 return default()
@@ -1870,7 +1877,8 @@ def global_variable_to_ast_lval(
             return astree.mk_vinfo_lval(vinfo, astoffset, anonymous=anonymous)
 
         if not anonymous:
-            chklogger.logger.error(
+            chklogger.logger.error_id(
+                CHKLogID.UNSP_GLBVAR_0003,
                 "Conversion of constant offset %s with suboffset %s at address "
                 + "%s not yet supported",
                 str(offset), str(offset.offset), iaddr)
@@ -1929,7 +1937,8 @@ def xvariable_to_ast_lval(
             return xmemory_dereference_lval(
                 memaddr, xdata, iaddr, astree, anonymous=anonymous)
 
-        chklogger.logger.error(
+        chklogger.logger.error_id(
+            CHKLogID.RSLT_ERRVAL_0009,
             "Conversion of memory lhs unsuccessful due to unknown memory address "
             + "at address " + iaddr)
         return astree.mk_temp_lval()

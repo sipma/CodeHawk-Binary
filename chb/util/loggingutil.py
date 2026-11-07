@@ -120,10 +120,14 @@ class CHKLogID(str, Enum):
     RSLT_ERRVAL_0005 = "RSLT-ERRVAL-0005"
     RSLT_ERRVAL_0006 = "RSLT-ERRVAL-0006"
     RSLT_ERRVAL_0007 = "RSLT-ERRVAL-0007"
+    RSLT_ERRVAL_0008 = "RSLT-ERRVAL-0008"
+    RSLT_ERRVAL_0009 = "RSLT-ERRVAL-0009"
+    RSLT_ERRVAL_0010 = "RSLT-ERRVAL-0010"
 
     RSLT_ITNOCC_0001 = "RSLT-ITNOCC-0001"   # thumb IfThen condition
 
     RSLT_PRNOCC_0001 = "RSLT-PRNOCC-0001"   # predicated instruction condition
+    RSLT_PRNOCC_0002 = "RSLT-PRNOCC-0002"
     RSLT_RANDOM_0001 = "RSLT-RANDOM-0001"
     RSLT_UNTYPED_0001 = "RSLT-UNTYPED-0001"
     RSLT_XCFALSE_0001 = "RSLT-XCFALSE-0001"
@@ -133,8 +137,12 @@ class CHKLogID(str, Enum):
     UNSP_BINOP_0001 = "UNSP-BINOP-0001"
     UNSP_DATASTR_0001 = "UNSP-DATASTR-0001"
     UNSP_DATASTR_0002 = "UNSP-DATASTR-0002"
+    UNSP_DATASTR_0003 = "UNSP-DATASTR-0003"
+    UNSP_DATASTR_0004 = "UNSP-DATASTR-0004"
+    UNSP_DATASTR_0005 = "UNSP-DATASTR-0005"
     UNSP_GLBVAR_0001 = "UNSP-GLBVAR-0001"
     UNSP_GLBVAR_0002 = "UNSP-GLBVAR-0002"
+    UNSP_GLBVAR_0003 = "UNSP-GLBVAR-0003"
     UNSP_IFTHEN_0001 = "UNSP-IFTHEN-0001"
     UNSP_INDEXEXP_0001 = "UNSP-INDEXEXP-0001"
     UNSP_INDCALL_0001 = "UNSP-INDCALL-0001"
@@ -142,15 +150,21 @@ class CHKLogID(str, Enum):
     UNSP_JMPTBL_0001 = "UNSP-JMPTBL-0001"
     UNSP_OPRVALUE_0001 = "UNSP-OPRVALUE-0001"
     UNSP_PTRXPR_0001 = "UNSP-PTRXPR-0001"
+    UNSP_PTRXPR_0002 = "UNSP-PTRXPR-0002"
     UNSP_REGLOC_0001 = "UNSP-REGLOC-0001"
-    UNSP_RETVAR_0001 = "UNSP-RETVAR-0001"
     UNSP_STCKARG_0001 = "UNSP-STCKARG-0001"
+    UNSP_UNOP_0001 = "UNSP-UNOP-0001"
 
     USER_FNPROTO_0001 = "USER-FNPROTO-0001"
+    USER_FNPROTO_0002 = "USER-FNPROTO-0002"
+    USER_FNPROTO_0003 = "USER-FNPROTO-0003"
     USER_GLBDECL_0001 = "USER-GLBDECL-0001"  # missing decl of global variable
     USER_GLBDECL_0002 = "USER-GLBDECL-0002"
+    USER_GLBDECL_0003 = "USER-GLBDECL-0003"
+    USER_GLBDECL_0004 = "USER-GLBDECL-0004"
     USER_STRCTDEF_0001 = "USER-STRCTDEF-0001"   # missing struct definition
     USER_STRCTDEF_0002 = "USER-STRCTDEF-0002"   # idem
+    USER_STRCTDEF_0003 = "USER-STRCTDEF-0003"   # idem
     USER_UNTYPEDSSA_0001 = "USER-UNTYPEDSSA-0001"
     USER_UNTYPEDST_0001 = "USER-UNTYPEDST-0001"
 
@@ -375,16 +389,16 @@ _subcategory_info: Dict[str, Dict[str, str]] = {
             "a register is referenced for which no location and size is available"),
         "action": "report to CodeHawk maintainers"
     },
-    "UNSP-RETVAR": {
-        "description": (
-            "the function to be lifted contains an access path into a return "
-            "variable that is not yet supported"),
-        "action": "report to CodeHawk maintainers"
-    },
     "UNSP-STCKARG": {
         "description": (
             "the function to be lifted contains a kind of stack argument that "
             "is not yet supported"),
+        "action": "report to CodeHawk maintainers"
+    },
+    "UNSP-UNOP": {
+        "description": (
+            "the function to be lifted contains a unary operation for which "
+            "lifting is not yet supported"),
         "action": "report to CodeHawk maintainers"
     },
     "USER-FNPROTO": {
