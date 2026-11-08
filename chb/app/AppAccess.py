@@ -30,7 +30,6 @@
 
 from abc import ABC, abstractmethod
 from typing import (
-    Any,
     Callable,
     cast,
     Dict,
@@ -38,20 +37,17 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Generic,
     Tuple,
     Type,
     TYPE_CHECKING,
-    TypeVar,
-    Union,
-    overload)
+)
 
 from chb.api.CallTarget import CallTarget, IndirectTarget, CallbackTableTarget
 from chb.api.InterfaceDictionary import InterfaceDictionary
 
 from chb.app.AppCfgInfo import AppCfgInfo
 from chb.app.AppResultData import AppResultData
-from chb.app.AppResultMetrics import AppResultMetrics
+from chb.app.AppResultMetrics import AppResultMetrics, DisassemblyMetrics
 from chb.app.ASMCallgraph import ASMCallgraph
 from chb.app.BDictionary import BDictionary
 from chb.app.CallbackTables import CallbackTables
@@ -91,25 +87,23 @@ import chb.util.fileutil as UF
 if TYPE_CHECKING:
     from chb.app.Instruction import Instruction
 
-HeaderTy = TypeVar('HeaderTy', PEHeader, ELFHeader, Union[PEHeader, ELFHeader])
 
-
-class AppAccess(ABC, Generic[HeaderTy]):
+class AppAccess(ABC):
     def __init__(
             self,
             path: str,
             filename: str,
-            fileformat: Type[HeaderTy],
+            fileformat: Type[UF.FileHeader],
             deps: List[str] = []) -> None:
         """Initializes access to analysis results."""
         self._path = path
         self._filename = filename
         self._deps = deps  # list of summary zips registered as dependencies
-        self._header_ty: Type[HeaderTy] = fileformat  # currently supported: elf, pe
+        self._header_ty: Type[UF.FileHeader] = fileformat  # currently supported: elf, pe
 
         self._userdata: Optional[UserData] = None
 
-        self._header: Optional[HeaderTy] = None
+        self._header: Optional[UF.FileHeader] = None
 
         # functions
         self._appresultdata: Optional[AppResultData] = None
@@ -227,12 +221,29 @@ class AppAccess(ABC, Generic[HeaderTy]):
 
     # File format --------------------------------------------------------------
     @property
-    def header(self) -> HeaderTy:
+    def header(self) -> UF.FileHeader:
         if self._header is None:
             x = self._header_ty.get_xnode(self.path, self.filename)
             self._header = self._header_ty(
                 self.path, self.filename, x, self.dependencies)
         return self._header
+
+    # Format specific. Will raise exceptions if the wrong format is requested
+    @property
+    def elf_header(self) -> ELFHeader:
+        if not self.elf:
+            raise RuntimeError("Requested ELF header but binary is not ELF: %s" % self._header_ty)
+        header = self.header
+        assert isinstance(header, ELFHeader)
+        return header
+
+    @property
+    def pe_header(self) -> PEHeader:
+        if not self.pe:
+            raise RuntimeError("Requested PE header but binary is not PE: %s" % self._header_ty)
+        header = self.header
+        assert isinstance(header, PEHeader)
+        return header
 
     # Systeminfo ---------------------------------------------------------------
 
@@ -700,6 +711,28 @@ class AppAccess(ABC, Generic[HeaderTy]):
         x = UF.get_resultmetrics_xnode(self.path, self.filename)
         h = UF.get_resultmetrics_xheader(self.path, self.filename)
         return AppResultMetrics(self.filename, x, h)
+
+    # Disassembly Metrics -----------------------------------------------------------
+
+    @property
+    def disassembly_metrics(self) -> DisassemblyMetrics:
+        """Returns metrics for the disassembly process
+
+        Depending on whether full analysis was done or only disassembly
+        (chkx analyze -d) was done they will be found in two different files:
+        - full analysis:
+            r/<binary>_metrics.xml
+        - disaseembly only:
+            s/<binary>_disassembly.xml
+        """
+        try:
+            result_metrics = self.result_metrics
+            return result_metrics.disassembly
+        except UF.CHBFileNotFoundError:
+            # If only disassembly was done and not full analysis, the disassembly
+            # stats are in a different file.
+            x = UF.get_disassembly_statistics_xnode(self.path, self.filename)
+            return DisassemblyMetrics(x)
 
     # User data -----------------------------------------------------------
 

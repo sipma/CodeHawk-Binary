@@ -128,6 +128,7 @@ if TYPE_CHECKING:
         VMemoryOffsetArrayIndexOffset,
         VMemoryOffsetBasePtrArrayIndexOffset,
         VMemoryOffsetIndexOffset)
+    from chb.invariants.XVariable import XVariable
     from chb.mips.MIPSRegister import MIPSRegister
 
 
@@ -1659,7 +1660,7 @@ def xxpr_to_ast_def_expr(
 
 
 def xvariable_to_ast_lvals(
-        xv: X.XVariable,
+        xv: 'XVariable',
         xdata: "InstrXData",
         astree: ASTInterface,
         size: int = 4,
@@ -1894,7 +1895,7 @@ def global_variable_to_ast_lval(
 
 
 def xvariable_to_ast_lval(
-        xv: X.XVariable,
+        xv: 'XVariable',
         xdata: "InstrXData",
         iaddr: str,
         astree: ASTInterface,

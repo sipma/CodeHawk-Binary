@@ -203,7 +203,6 @@ def get_app(path: str, xfile: str, xinfo: XI.XInfo) -> AppAccess:
 
 def get_asm(app: AppAccess) -> Assembly:
     if isinstance(app, MIPSAccess):
-        app = cast(MIPSAccess, app)
         return MIPSAssembly(app, UF.get_mips_asm_xnode(app.path, app.filename))
     elif isinstance(app, ARMAccess):
         return ARMAssembly(app, UF.get_arm_asm_xnode(app.path, app.filename))
@@ -608,7 +607,7 @@ def analyzecmd(args: argparse.Namespace) -> NoReturn:
             udata = userdata["userdata"] = {}
             dbdata = udata["data-blocks"] = []
             for db in datablocks:
-                dbrec: Dict = {}
+                dbrec: Dict[str, List[str]] = {}
                 dbrec["r"] = [db.startaddr, db.endaddr]
                 dbdata.append(dbrec)
             with open(outputfile + ".json", "w") as fp:
@@ -1847,7 +1846,7 @@ def results_extract(args: argparse.Namespace) -> NoReturn:
         exit(1)
 
     app = get_app(path, xfile, xinfo)
-    elfheader = app.header
+    elfheader = app.elf_header
 
     iaddr = int(addr, 16)
     sectionindex = elfheader.get_elf_section_index(iaddr)
@@ -1899,6 +1898,7 @@ def results_extract(args: argparse.Namespace) -> NoReturn:
             sectionindex = elfheader.get_elf_section_index(iaddr)
             if sectionindex is None:
                 print_error("Address not found in elf section: " + addr)
+                continue
             stable: List[str] = []
             while True:
                 data = elfheader.get_doubleword_value(
@@ -1908,6 +1908,9 @@ def results_extract(args: argparse.Namespace) -> NoReturn:
                     break
                 else:
                     strindex = elfheader.get_elf_section_index(data)
+                    if strindex is None:
+                        print_error("No section index found for %#x" % data)
+                        continue
                     strdata = elfheader.get_string(strindex, data)
                     stable.append(strdata)
             table.append(stable)
@@ -1926,7 +1929,9 @@ def results_extract(args: argparse.Namespace) -> NoReturn:
                     strindex = elfheader.get_elf_section_index(data)
                     if strindex is None:
                         print_error("String address not found: " + hex(data))
-                    strdata = elfheader.get_string(strindex, data)
+                        strdata = hex(data)
+                    else:
+                        strdata = elfheader.get_string(strindex, data)
                     r.append(strdata)
                 elif t == "int":
                     r.append(str(data))
@@ -2014,6 +2019,7 @@ def results_struct_arguments(args: argparse.Namespace) -> NoReturn:
     xinfo.load(path, xfile)
 
     app = get_app(path, xfile, xinfo)
+    elf_header = app.elf_header
 
     results: Dict[int, Tuple[int, "BCCompInfo"]] = {}
     callinstrs = app.call_instructions()
@@ -2058,7 +2064,7 @@ def results_struct_arguments(args: argparse.Namespace) -> NoReturn:
 
                             structtype = cast("BCTypComp", structtype)
                             addr = x.intvalue
-                            elfsection = app.header.get_elf_section_index(addr)
+                            elfsection = elf_header.get_elf_section_index(addr)
                             if elfsection is not None:
                                 print(
                                     "struct: "
@@ -2072,7 +2078,7 @@ def results_struct_arguments(args: argparse.Namespace) -> NoReturn:
     for (addr, (elfsection, compinfo)) in sorted(results.items()):
         print("\nstruct " + compinfo.cname + " at " + hex(addr))
         for (foffset, fieldinfo) in compinfo.fieldoffsets():
-            fieldval = app.header.get_doubleword_value(elfsection, addr + foffset)
+            fieldval = elf_header.get_doubleword_value(elfsection, addr + foffset)
             print(
                 str(foffset).rjust(4)
                 + "  "
@@ -2084,9 +2090,9 @@ def results_struct_arguments(args: argparse.Namespace) -> NoReturn:
                 if (
                         fieldtype.tgttyp.is_integer
                         and fieldtype.tgttyp.byte_size() == 1):
-                    fieldsection = app.header.get_elf_section_index(fieldval)
+                    fieldsection = elf_header.get_elf_section_index(fieldval)
                     if fieldsection is not None:
-                        fieldstring = app.header.get_string(
+                        fieldstring = elf_header.get_string(
                             fieldsection, fieldval)
                         print("     Constant string: " + fieldstring)
 
@@ -2800,6 +2806,38 @@ def show_function_semantics_table(args: argparse.Namespace) -> NoReturn:
     ixdictionary = app.interfacedictionary
 
     print(ixdictionary.function_semantics_table_to_string())
+
+    exit(0)
+
+
+def ddata_stats(args: argparse.Namespace) -> NoReturn:
+    """Prints disassembly statistics"""
+    # arguments
+    xname: str = str(args.xname)
+
+    try:
+        (path, xfile) = get_path_filename(xname)
+    except UF.CHBError as e:
+        print(str(e.wrap()))
+        exit(1)
+
+    xinfo = XI.XInfo()
+    xinfo.load(path, xfile)
+
+    app = get_app(path, xfile, xinfo)
+    metrics = app.disassembly_metrics
+
+    if args.output:
+        jsonok = JU.jsonok("disassembly-stats", metrics.to_json_result().content)
+        with open(args.output, "w") as fp:
+            json.dump(jsonok, fp, indent=4)
+    else:
+        print("Instructions         : %d" % metrics.instruction_count)
+        print("Unknown instructions : %d" % metrics.unknown_instrs)
+        print("Functions            : %d (coverage:  %.2f%%)" % (metrics.function_count, metrics.pcoverage))
+        print("Function overlap     : %d (counting multiples: %d)" % (metrics.overlap, metrics.all_overlap))
+        print("Jumptables           : %d" % (metrics.jumptables))
+        print("Data blocks          : %d" % (metrics.datablocks))
 
     exit(0)
 

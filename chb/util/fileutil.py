@@ -90,10 +90,10 @@ or otherwise.
 import json
 import os
 import subprocess
-import shutil
 import xml.etree.ElementTree as ET
+from abc import ABC, abstractmethod
 
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
 from chb.util.Config import Config
 
@@ -283,6 +283,55 @@ class CHBNotImplementedError(CHBError):
             + self.msg)
 
 
+class FileHeader(ABC):
+    """Interface for binary header classes
+
+    It provides the main entry point to access the raw data in the executable.
+
+    The abstract class enables us to treat different types of binaries (ELF, PE)
+    the same way regardless of the underlying details.
+    """
+    @staticmethod
+    @abstractmethod
+    def fmt_name() -> str: ...
+
+    @staticmethod
+    @abstractmethod
+    def get_xnode(path: str, filename: str) -> ET.Element: ...
+
+
+    @abstractmethod
+    def __init__(
+            self,
+            pathname: str,
+            filename: str,
+            xnode: ET.Element,
+            deps: Sequence[str]) -> None: ...
+
+    @property
+    @abstractmethod
+    def pathname(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def filename(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def image_base(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def max_address_space(self) -> str: ...
+
+    @abstractmethod
+    def is_in_address_space(self, addr: int) -> bool: ...
+
+    @property
+    @abstractmethod
+    def is_big_endian(self) -> bool: ...
+
+
 def get_path_filename(name: str) -> Tuple[str, str]:
     """Returns the path and filename of the target executable indicated by name."""
     name = os.path.abspath(name)
@@ -356,7 +405,7 @@ def get_locale_file() -> Dict[str, Any]:
         raise CHBFileNotFoundError(filename)
     try:
         with open(filename, "r") as fp:
-            return json.load(fp)
+            return cast(Dict[str, Any], json.load(fp))
     except ValueError as e:
         raise CHBJSONParseError(filename, e)
 
@@ -500,7 +549,7 @@ def get_chb_json(filename: str) -> Dict[str, Any]:
     if os.path.isfile(filename):
         try:
             with open(filename, "r") as fp:
-                return json.load(fp)
+                return cast(Dict[str, Any], json.load(fp))
         except ValueError as e:
             raise CHBJSONParseError(filename, e)
         except Exception as e:
@@ -955,7 +1004,7 @@ def get_cfg_replacement_texts(path: str, xfile: str) -> Dict[str, Any]:
     if os.path.isfile(filename):
         try:
             with open(filename, "r") as fp:
-                d = json.load(fp)
+                d = cast(Dict[str, Any], json.load(fp))
         except ValueError as e:
             raise CHBJSONParseError(filename, e)
         return d
@@ -1007,8 +1056,16 @@ def get_disassembly_statistics_filename(path: str, xfile: str) -> str:
 
 
 def get_disassembly_statistics_xnode(path: str, xfile: str) -> ET.Element:
+    """This file/node is only found when we run disassembly only (chkx analyze -d)
+
+    The node will be at <--root--><disassembly-status><disassembly>
+    """
     filename = get_disassembly_statistics_filename(path, xfile)
-    return get_chb_xnode(filename, "disassembly")
+    disassembly_status_node = get_chb_xnode(filename, "disassembly-status")
+    disassembly_node = disassembly_status_node.find("disassembly")
+    if disassembly_node is None:
+        raise CHBXmlRootElementNotFoundError(filename, "disassembly")
+    return disassembly_node
 
 
 def get_features_filename(path: str, xfile: str) -> str:
@@ -1037,7 +1094,7 @@ def get_summaries_list() -> Dict[str, Any]:
     if os.path.isfile(summariesfile):
         try:
             with open(summariesfile, "r") as fp:
-                return json.load(fp)
+                return cast(Dict[str, Any], json.load(fp))
         except ValueError as e:
             raise CHBJSONParseError(summariesfile, e)
         except Exception as e:
@@ -1133,9 +1190,9 @@ def get_file_registered_options(md5: str) -> Dict[str, Any]:
         for f in config.commandline_options:
             filename = config.commandline_options[f]
             with open(filename, "r") as fp:
-                options = json.load(fp)
+                options = cast(Dict[str, Any], json.load(fp))
             if md5 in options:
-                return options[md5]
+                return cast(Dict[str, Any], options[md5])
             else:
                 pass
         else:
@@ -1155,11 +1212,11 @@ def get_file_registered_userdata(md5: str) -> Dict[str, Any]:
         for f in config.registered_userdata:
             filename = config.registered_userdata[f]
             with open(filename, "r") as fp:
-                userdatafile = json.load(fp)
+                userdatafile = cast(Dict[str, Any], json.load(fp))
             if md5 in userdatafile["executables"]:
-                xuserdata = userdatafile["executables"][md5]
+                xuserdata = cast(Dict[str, Any], userdatafile["executables"][md5])
                 if "userdata" in xuserdata:
-                    return xuserdata["userdata"]
+                    return cast(Dict[str, Any], xuserdata["userdata"])
                 else:
                     return {}
             else:
@@ -1184,12 +1241,12 @@ def get_simsupport(kind: str, tag: str) -> Dict[str, Any]:
         if os.path.isfile(filename):
             try:
                 with open(filename, "r") as fp:
-                    simsupport = json.load(fp)
+                    simsupport = cast(Dict[str, Any], json.load(fp))
             except Exception as e:
                 raise CHBError("Error loading " + filename + ": " + str(e))
 
             if tag in simsupport["simsupport"]:
-                return simsupport["simsupport"][tag]
+                return cast(Dict[str, Any], simsupport["simsupport"][tag])
             else:
                 raise CHBError(
                     "File " + filename + " does not provide data for " + tag)

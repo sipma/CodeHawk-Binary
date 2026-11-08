@@ -2912,7 +2912,6 @@ class ASTCompInfo(ASTNode):
                 prev = (i, fname)
         else:
             if prev is not None:
-                prev = cast(Tuple[int, str], prev)
                 return (self.fieldinfo(prev[1]), offset - prev[0])
             else:
                 raise Exception(
