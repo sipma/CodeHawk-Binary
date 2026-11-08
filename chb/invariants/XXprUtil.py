@@ -779,7 +779,8 @@ def vglobal_variable_value_to_ast_lval_expression(
                     vinfo, indexoffset, anonymous=anonymous)
 
     if not anonymous:
-        chklogger.logger.error(
+        chklogger.logger.error_id(
+            CHKLogID.UNSP_GLBVAR_0004,
             "Conversion of global value %s at address %s not yet supported",
             str(offset), iaddr)
     return astree.mk_temp_lval_expression()

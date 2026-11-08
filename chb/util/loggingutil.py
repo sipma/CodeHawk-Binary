@@ -32,6 +32,7 @@ from contextlib import contextmanager
 import datetime
 import logging
 import os
+import subprocess
 import sys
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -143,6 +144,7 @@ class CHKLogID(str, Enum):
     UNSP_GLBVAR_0001 = "UNSP-GLBVAR-0001"
     UNSP_GLBVAR_0002 = "UNSP-GLBVAR-0002"
     UNSP_GLBVAR_0003 = "UNSP-GLBVAR-0003"
+    UNSP_GLBVAR_0004 = "UNSP-GLBVAR-0004"
     UNSP_IFTHEN_0001 = "UNSP-IFTHEN-0001"
     UNSP_INDEXEXP_0001 = "UNSP-INDEXEXP-0001"
     UNSP_INDCALL_0001 = "UNSP-INDCALL-0001"
@@ -596,6 +598,53 @@ def json_log_recommendations(digest: Dict[str, Any]) -> List[Dict[str, Any]]:
     return sorted(result, key=_by_severity)
 
 
+def _git_describe(path: str) -> Optional[str]:
+    """Return git describe --always --dirty for the checkout containing path."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "describe", "--always", "--dirty",
+             "--abbrev=8"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def tool_versions() -> Dict[str, Optional[str]]:
+    """Return the versions of the tools that produced the log entries.
+
+    - chb: version of the CodeHawk-Binary python package (CHVersion)
+    - chb-git: git revision of the CodeHawk-Binary checkout, if any
+    - analyzer: path of the (OCaml) analyzer executable configured
+    - analyzer-git: git revision of the checkout containing the analyzer
+      executable (e.g., the codehawk repository for a dune build), if any;
+      note that this is the revision of the sources, which may differ from
+      the revision the executable was built from.
+
+    Values that cannot be determined are None.
+    """
+    result: Dict[str, Optional[str]] = {}
+    try:
+        from chb.app.CHVersion import chbversion
+        result["chb"] = chbversion
+    except Exception:
+        result["chb"] = None
+    chbdir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    result["chb-git"] = _git_describe(chbdir)
+    try:
+        from chb.util.Config import Config
+        analyzer: Optional[str] = Config().chx86_analyze
+    except Exception:
+        analyzer = None
+    result["analyzer"] = analyzer
+    result["analyzer-git"] = (
+        _git_describe(os.path.dirname(os.path.realpath(analyzer)))
+        if analyzer is not None and os.path.isfile(analyzer) else None)
+    return result
+
+
 class JsonLogHandler(logging.Handler):
     """Collects log entries and writes them as a single json document.
 
@@ -650,7 +699,8 @@ class JsonLogHandler(logging.Handler):
                 "start": self._start,
                 "end": datetime.datetime.now().isoformat(timespec="seconds"),
                 "command": " ".join(sys.argv),
-                "level": logging.getLevelName(self.level)}]
+                "level": logging.getLevelName(self.level),
+                "versions": tool_versions()}]
             digest = json_log_digest(self._entries)
             result = {
                 "runs": runs,
