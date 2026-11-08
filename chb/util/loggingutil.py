@@ -36,7 +36,8 @@ import subprocess
 import sys
 from enum import Enum
 
-from typing import Optional, List, Iterator, TYPE_CHECKING, Any, MutableMapping
+from typing import (
+    Dict, Optional, List, Iterator, TYPE_CHECKING, Any, MutableMapping)
 
 # Work around mypy issue with LoggerAdapter: https://github.com/python/typeshed/issues/7855
 if TYPE_CHECKING:
@@ -80,7 +81,7 @@ class LogLevel(str, Enum):
 
 class NativeJsonFormatter(logging.Formatter):
 
-    def format(self, record: logging.LogRecord) -> Dict[str, Any]:
+    def payload(self, record: logging.LogRecord) -> Dict[str, Any]:
         log_payload: Dict[str, Any] = {
             "ts": self.formatTime(record, self.datefmt),
             "lvl": record.levelname,

@@ -375,9 +375,9 @@ class ARMOpcodeXData:
         if xpr.is_int_constant:
             xpr = cast("XprConstant", xpr)
             if size == 32:
-                return cast("XprConstant", xpr).convert_imm32_to_float
+                return xpr.convert_imm32_to_float
             elif size == 64:
-                return cast("XprConstant", xpr).convert_imm64_to_float
+                return xpr.convert_imm64_to_float
             else:
                 return None
         else:
